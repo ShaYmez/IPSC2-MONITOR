@@ -25,12 +25,22 @@ This is a per-master sidecar. It does not replace RYSEN-MONITOR selfcare and doe
 
 ## Install on a System X master
 
-On the host (Apache already proxies `/dashboard/` to the existing UI):
+Clone the repo so updates are `git pull`:
 
-1. Copy this tree to `/opt/ipsc2-monitor`
-2. `python3 -m venv /opt/ipsc2-monitor/.venv && .venv/bin/pip install -r requirements.txt`
-3. Point `[RYSEN] HOST` at `127.0.0.1` and bind `[WEB] HOST` to `127.0.0.1`
-4. Install `deploy/ipsc2mon.service` and `deploy/apache-ipsc2.conf` (include the Apache snippet from the System X vhost)
-5. `systemctl enable --now ipsc2mon` and reload Apache
+```bash
+git clone https://github.com/ShaYmez/IPSC2-MONITOR.git /opt/ipsc2-monitor
+python3 -m venv /opt/ipsc2-monitor/.venv
+/opt/ipsc2-monitor/.venv/bin/pip install -r /opt/ipsc2-monitor/requirements.txt
+cp /opt/ipsc2-monitor/ipsc2mon.cfg /etc/rysen/ipsc2mon.cfg
+# edit /etc/rysen/ipsc2mon.cfg — RYSEN 127.0.0.1:4321, WEB 127.0.0.1:8088, site title
+install -m 644 /opt/ipsc2-monitor/deploy/ipsc2mon.service /etc/systemd/system/ipsc2mon.service
+install -m 644 /opt/ipsc2-monitor/deploy/apache-ipsc2.conf /etc/apache2/conf-available/ipsc2-monitor.conf
+# Include that Apache snippet from the System X vhost
+systemctl daemon-reload
+systemctl enable --now ipsc2mon
+systemctl reload apache2
+```
+
+Update later with `/opt/ipsc2-monitor/deploy/update.sh` (pull + restart). Site settings stay in `/etc/rysen/ipsc2mon.cfg` so a pull does not overwrite them.
 
 The UI is then at `https://<master>/legacy/`. REPORT_CLIENTS on RYSEN must allow the host (stock is `*`).

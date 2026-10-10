@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/ipsc2-monitor
-ExecStart=/opt/ipsc2-monitor/.venv/bin/python /opt/ipsc2-monitor/ipsc2mon.py
+ExecStart=/opt/ipsc2-monitor/.venv/bin/python /opt/ipsc2-monitor/ipsc2mon.py /etc/rysen/ipsc2mon.cfg
 Restart=on-failure
 RestartSec=3
 User=root
