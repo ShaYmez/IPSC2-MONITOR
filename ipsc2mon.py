@@ -1011,9 +1011,24 @@ def bridge_payload():
     return {"stamp": now_stamp(), "rows": rows}
 
 
+APP_MARKERS = ("qsoone", "voxdmr", "z3dmr")
+
+
+def is_app_peer(peer):
+    kind = classify_peer(peer.get("ID"), peer)
+    if kind == "hotspot":
+        return True
+    if kind != "repeater":
+        return False
+    desc = (peer.get("DESCRIPTION") or "").lower()
+    return any(mark in desc for mark in APP_MARKERS)
+
+
 def dongle_payload():
     rows = []
-    for _, peer in sorted_peers("hotspot"):
+    for _, peer in sorted_peers():
+        if not is_app_peer(peer):
+            continue
         s1, s2 = peer.get(1) or {}, peer.get(2) or {}
         static = (peer.get("TS1_STATIC") or []) + (peer.get("TS2_STATIC") or [])
         rows.append({

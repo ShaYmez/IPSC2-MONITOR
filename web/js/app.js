@@ -256,7 +256,7 @@
 
   function renderDongle(data) {
     let html = `<table>
-      <thead><tr><th colspan="6">LINKED DMR DONGLES</th></tr></thead>
+      <thead><tr><th colspan="6">LINKED APPS</th></tr></thead>
       <tbody>
         <tr>
           <th class="tableft">NR.</th><th class="tableft">DONGLE CALL</th>
