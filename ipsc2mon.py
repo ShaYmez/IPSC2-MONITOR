@@ -65,7 +65,11 @@ CTABLE = {"MASTERS": {}, "PEERS": {}, "OPENBRIDGES": {}}
 LASTHEARD = deque(maxlen=70)
 ACTIVE = {}
 HANG = {}
+ENDED_SID = {}
+ENDED_KEY = {}
 HANG_SECS = 4
+ACTIVE_MAX_SECS = 180
+END_GUARD_SECS = 3
 RYSEN_VERSION = ""
 CONFIG_RX = ""
 CONNECTED = False
@@ -549,6 +553,7 @@ def update_hblink_table(config):
             del CTABLE["MASTERS"][name]
     _apply_options(config)
     clean_timeouts()
+    prune_activity()
 
 
 def _apply_options(config):
@@ -631,9 +636,28 @@ def find_peer(peer_id):
     except (TypeError, ValueError):
         return None
     for _, peer in iter_peers():
-        if peer.get("ID") == pid or str(peer.get("RADIO_ID")) == str(pid):
+        if is_source_peer(peer, pid):
             return peer
     return None
+
+
+def peer_id_set(peer):
+    ids = set()
+    for value in (peer.get("ID"), peer.get("RADIO_ID")):
+        if value is None or value == "":
+            continue
+        ids.add(str(value))
+        try:
+            ids.add(str(int(value)))
+        except (TypeError, ValueError):
+            pass
+    return ids
+
+
+def is_source_peer(peer, source):
+    if source is None or source == "":
+        return False
+    return str(source) in peer_id_set(peer)
 
 
 def slot_state(slot):
@@ -664,17 +688,41 @@ def prune_hang():
             HANG.pop(key, None)
 
 
+def prune_ended():
+    now = time()
+    for store in (ENDED_SID, ENDED_KEY):
+        for key in list(store):
+            if now >= float(store[key]):
+                store.pop(key, None)
+
+
+def prune_activity():
+    now = time()
+    prune_ended()
+    for key in list(ACTIVE):
+        seen = float(ACTIVE[key].get("seen") or 0)
+        if seen and now - seen > ACTIVE_MAX_SECS:
+            ended = ACTIVE.pop(key)
+            ended["until"] = now + HANG_SECS
+            HANG[key] = ended
+    prune_hang()
+
+
+def _is_local_radio(peer_id):
+    peer = find_peer(peer_id)
+    if not peer:
+        return False
+    return classify_peer(peer.get("ID"), peer) in ("repeater", "hotspot")
+
+
 def _slot_from_activity(peer, ts, items, hang):
     static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
-    pid = str(peer.get("ID") or "")
-    rid = str(peer.get("RADIO_ID") or "")
     for item in items:
         if item.get("ts") != ts:
             continue
         tg = str(item.get("tg") or "")
-        source = str(item.get("peer") or "")
-        is_source = source in (pid, rid)
-        if tg not in static and not is_source:
+        is_source = is_source_peer(peer, item.get("peer"))
+        if not peer_holds_tg(peer, tg, ts) and not is_source:
             continue
         if hang:
             state = "rx-hang" if is_source else "tx-hang"
@@ -701,19 +749,45 @@ def peer_holds_tg(peer, tg, ts):
 def activity_is_local(item):
     tg = item.get("tg")
     ts = item.get("ts")
-    source = str(item.get("peer") or "")
     for _, peer in iter_peers():
-        if source in (str(peer.get("ID") or ""), str(peer.get("RADIO_ID") or "")):
+        if is_source_peer(peer, item.get("peer")):
             return True
         if peer_holds_tg(peer, tg, ts):
             return True
     return False
 
 
+def _activity_from_slot(peer, ts):
+    slot = peer.get(ts) or {}
+    if not slot.get("TS") or not slot.get("TRX"):
+        return None
+    tg = str(slot.get("TG") or slot.get("DEST") or "")
+    is_rx = slot.get("TRX") in ("RX", "UNIT_TX")
+    item = {
+        "tg": tg,
+        "name": alias_tg(tg) if tg else "",
+        "call": slot.get("CALL") or "",
+        "radio_id": slot.get("SRC") or "",
+    }
+    static = [str(value) for value in (peer.get(f"TS{ts}_STATIC") or [])]
+    return {
+        "state": "rx" if is_rx else "tx",
+        "info": ipsc2_call_info(item),
+        "cq": "CQ",
+        "tg": tg,
+        "show_tg": tg if is_rx and tg and tg not in static else "",
+    }
+
+
 def slot_activity(peer, ts):
+    slot_live = _activity_from_slot(peer, ts)
+    if slot_live and slot_live.get("state") == "rx":
+        return slot_live
     live = _slot_from_activity(peer, ts, ACTIVE.values(), hang=False)
     if live:
         return live
+    if slot_live:
+        return slot_live
     hung = _slot_from_activity(peer, ts, HANG.values(), hang=True)
     if hung:
         return hung
@@ -727,7 +801,7 @@ def rts_update(parts):
     action = parts[1]
     trx = parts[2]
     system = parts[3]
-    stream_id = parts[4]
+    stream_id = str(parts[4])
     try:
         source_peer = int(parts[5])
         source_sub = int(parts[6])
@@ -742,7 +816,7 @@ def rts_update(parts):
     if system in CTABLE["MASTERS"]:
         for peer_id, peer in CTABLE["MASTERS"][system]["PEERS"].items():
             slot = peer[time_slot]
-            crx = "RX" if source_peer == peer_id else "TX"
+            crx = "RX" if is_source_peer(peer, source_peer) else "TX"
             if action == "START":
                 slot.update({
                     "TIMEOUT": timeout,
@@ -756,9 +830,13 @@ def rts_update(parts):
                     "SID": stream_id,
                     "RSSI": _event_rssi(parts) if crx == "RX" else slot.get("RSSI", ""),
                 })
-            elif action == "RSSI" and slot.get("SID") == stream_id:
+            elif action == "RSSI" and str(slot.get("SID") or "") == stream_id:
                 slot["RSSI"] = _event_rssi(parts)
-            elif action == "END" and (not slot.get("SID") or slot.get("SID") == stream_id):
+            elif action == "END" and (
+                not slot.get("SID")
+                or str(slot.get("SID")) == stream_id
+                or str(slot.get("DEST") or "") == str(destination)
+            ):
                 peer[time_slot] = empty_slot()
     if system in CTABLE["OPENBRIDGES"]:
         streams = CTABLE["OPENBRIDGES"][system]["STREAMS"]
@@ -773,20 +851,46 @@ def rts_update(parts):
         elif action == "END":
             streams.pop(stream_id, None)
     key = f"{destination}:{time_slot}"
+    prune_ended()
     if action == "START":
-        HANG.pop(key, None)
-        ACTIVE[key] = {
-            "tg": destination,
-            "ts": time_slot,
-            "call": call,
-            "radio_id": source_sub,
-            "peer": source_peer,
-            "name": alias_tg(destination),
-        }
+        late = stream_id in ENDED_SID
+        obp = system in CTABLE["OPENBRIDGES"]
+        live = ACTIVE.get(key)
+        if late:
+            pass
+        elif obp and (key in ENDED_KEY or (live and _is_local_radio(live.get("peer")))):
+            pass
+        else:
+            source = source_peer
+            if not _is_local_radio(source):
+                for _, peer in iter_peers():
+                    slot = peer.get(time_slot) or {}
+                    if slot.get("TRX") == "RX" and str(slot.get("SID") or "") == stream_id:
+                        source = peer.get("ID") or source
+                        break
+            HANG.pop(key, None)
+            ACTIVE[key] = {
+                "tg": destination,
+                "ts": time_slot,
+                "call": call,
+                "radio_id": source_sub,
+                "peer": source,
+                "name": alias_tg(destination),
+                "sid": stream_id,
+                "seen": timeout,
+            }
     elif action == "END":
+        ENDED_SID[stream_id] = timeout + END_GUARD_SECS
+        ENDED_KEY[key] = timeout + END_GUARD_SECS
         ended = ACTIVE.pop(key, None)
+        if not ended:
+            for item_key, item in list(ACTIVE.items()):
+                if str(item.get("sid") or "") == stream_id:
+                    ended = ACTIVE.pop(item_key)
+                    key = item_key
+                    break
         if ended:
-            ended["until"] = time() + HANG_SECS
+            ended["until"] = timeout + HANG_SECS
             HANG[key] = ended
 
 
@@ -916,7 +1020,7 @@ def sorted_peers(kind=None):
 
 
 def status_payload():
-    prune_hang()
+    prune_activity()
     registered = []
     seen = set()
     for item in ACTIVE.values():
@@ -1202,6 +1306,8 @@ class ReportFactory(ReconnectingClientFactory):
         CTABLE["OPENBRIDGES"].clear()
         ACTIVE.clear()
         HANG.clear()
+        ENDED_SID.clear()
+        ENDED_KEY.clear()
         logger.info("Lost RYSEN report: %s", reason)
         ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
 
@@ -1234,6 +1340,7 @@ def main(argv=None):
     reactor.listenTCP(cfg["web_port"], site, interface=cfg["web_host"])
     reactor.connectTCP(cfg["rysen_host"], cfg["rysen_port"], ReportFactory())
     task.LoopingCall(clean_timeouts).start(30, now=False)
+    task.LoopingCall(prune_activity).start(1, now=False)
     logger.info(
         "IPSC2-MONITOR serving http://%s:%s  (RYSEN %s:%s)",
         cfg["web_host"], cfg["web_port"], cfg["rysen_host"], cfg["rysen_port"],
