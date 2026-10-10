@@ -181,8 +181,7 @@ tbody tr:nth-child(even) {
 .main td,
 .main td.accent-bar {
   background-color: var(--accent);
-  padding: 0.45em;
-  border: 0;
+  padding: 0.5em;
 }
 
 .bottom {
@@ -193,8 +192,7 @@ tbody tr:nth-child(even) {
 .bottom td,
 .bottom td.accent-bar {
   background-color: var(--accent);
-  padding: 0.28em;
-  border: 0;
+  padding: 2px;
 }
 
 .bottom th {
