@@ -2,6 +2,8 @@
 
 Legacy IPSC2-style dashboard for a RYSEN / System X master.
 
+Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
+
 It copies the live IPSC2 chrome (STATUS, MONITOR, MATRIX, REMAP, BRIDGE, DONGLE, SERVICE, SITE-INFO) in a modern static frontend, and reads the same TCP report socket that RYSEN-MONITOR uses (`:4321`).
 
 ## Run

@@ -1,3 +1,7 @@
+/**
+ * IPSC2-MONITOR dashboard client.
+ * Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
+ */
 (function () {
   const main = document.getElementById("mainpage");
   const titleEl = document.getElementById("site-title");

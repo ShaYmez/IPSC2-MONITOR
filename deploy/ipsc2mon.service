@@ -1,3 +1,6 @@
+# IPSC2-MONITOR
+# Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
+
 [Unit]
 Description=IPSC2-style dashboard sidecar for RYSEN / System X
 After=network-online.target docker.service
