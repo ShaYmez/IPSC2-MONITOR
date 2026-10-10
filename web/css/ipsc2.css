@@ -202,12 +202,16 @@ tbody tr:nth-child(even) {
   font-size: 0.95em;
 }
 
-.nav-credit p {
+.nav-brand {
   margin: 0;
 }
 
-.nav-credit span {
+.nav-brand span {
   display: block;
+}
+
+.nav-calls {
+  margin: 1.2em 0 0;
 }
 
 .table-scroll {
@@ -342,25 +346,32 @@ tbody tr:nth-child(even) {
     align-items: center;
     justify-content: space-between;
     gap: 0.35em 0.75em;
-    padding: 0.4em 0.7em;
+    padding: 0.45em 0.7em 0.7em;
     padding-left: max(0.7em, env(safe-area-inset-left));
     padding-right: max(0.7em, env(safe-area-inset-right));
     border-top: 0.15em solid #fff;
   }
 
-  .nav-credit p {
+  .nav-credit-text {
+    flex: 1 1 auto;
+  }
+
+  .nav-brand {
     display: flex;
     flex-wrap: wrap;
     gap: 0 0.55em;
-    margin: 0;
   }
 
-  .nav-credit span {
+  .nav-brand span {
     display: inline;
   }
 
-  .nav-credit span + span::before {
+  .nav-brand span + span::before {
     content: "· ";
+  }
+
+  .nav-calls {
+    margin-top: 0.75em;
   }
 
   #theme-toggle {
