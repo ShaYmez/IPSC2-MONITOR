@@ -1,0 +1,245 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root,
+[data-theme="uk"] {
+  --header-bar: #012169;
+  --title-bg: #012169;
+  --title-fg: #ffffff;
+  --accent: #c8102e;
+  --nav-bg: #dee7ec;
+  --nav-hover: #c8102e;
+  --nav-hover-fg: #ffffff;
+  --thead: #c8102e;
+  --thead-fg: #ffffff;
+  --colhead: #dee7ec;
+  --stripe: #e8eef4;
+  --page-bg: #ffffff;
+  --text: #000000;
+  --footer-bg: #012169;
+  --footer-fg: #ffffff;
+  --cell-tx: #ff6600;
+  --cell-rx: #3cb371;
+  --cell-lock: #c00;
+}
+
+[data-theme="de"] {
+  --header-bar: orange;
+  --title-bg: #26354a;
+  --title-fg: #ffba00;
+  --accent: #ff6600;
+  --nav-bg: #dee7ec;
+  --nav-hover: #ffcc00;
+  --nav-hover-fg: #000000;
+  --thead: #ffcc00;
+  --thead-fg: #000000;
+  --colhead: #dee7ec;
+  --stripe: #dee7ec;
+  --page-bg: #ffffff;
+  --text: #000000;
+  --footer-bg: #26354a;
+  --footer-fg: #ffba00;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: Tahoma, Arial, Helvetica, sans-serif;
+  font-size: 0.9em;
+  color: var(--text);
+  background: var(--page-bg);
+}
+
+#wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+#header {
+  background-color: var(--header-bar);
+  height: 4em;
+}
+
+#content_nav {
+  position: absolute;
+  left: 0;
+  width: 7em;
+  top: 4em;
+  bottom: 2em;
+  background-color: var(--nav-bg);
+}
+
+#mainpage {
+  position: absolute;
+  left: 7em;
+  right: 0;
+  top: 4em;
+  bottom: 2em;
+  overflow: auto;
+  background: var(--page-bg);
+  padding-bottom: 0.5em;
+}
+
+#footer {
+  position: fixed;
+  height: 2em;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--nav-bg);
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  width: 100%;
+  border: 0.3px solid #fff;
+}
+
+td {
+  border: 2px solid var(--nav-bg);
+  text-align: left;
+  padding-left: 3px;
+  white-space: nowrap;
+}
+
+th {
+  background-color: var(--colhead);
+  text-align: center;
+  font-size: 1em;
+  padding-left: 3px;
+  font-weight: bold;
+}
+
+th.tableft {
+  background-color: var(--colhead);
+  text-align: left;
+  font-size: 1em;
+  padding-left: 3px;
+}
+
+thead th {
+  background-color: var(--thead);
+  color: var(--thead-fg);
+  text-align: center;
+  font-size: 0.9em;
+  padding: 3px;
+}
+
+tbody tr:nth-child(even) {
+  background-color: var(--stripe);
+}
+
+#map a {
+  display: block;
+  text-decoration: none;
+  background-color: var(--nav-bg);
+  color: #000;
+  border-bottom: 0.3em solid #fff;
+  padding: 0.7em 0 0.7em 0.5em;
+}
+
+#map a:visited {
+  color: #000;
+  text-decoration: none;
+}
+
+#map a:hover,
+#map a.active {
+  color: var(--nav-hover-fg);
+  text-decoration: none;
+  background-color: var(--nav-hover);
+}
+
+.main {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.main th {
+  background-color: var(--title-bg);
+  text-align: center;
+  font-size: 2.5em;
+  color: var(--title-fg);
+  padding: 0;
+  letter-spacing: 0.02em;
+}
+
+.main td,
+.main td.accent-bar {
+  background-color: var(--accent);
+  padding: 0.45em;
+  border: 0;
+}
+
+.bottom {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.bottom th {
+  background-color: var(--footer-bg);
+  text-align: center;
+  font-size: 1em;
+  color: var(--footer-fg);
+  padding: 0.35em;
+}
+
+.nav-credit {
+  padding: 1.2em 0 0 0.6em;
+  line-height: 1.35;
+  font-size: 0.95em;
+}
+
+#theme-toggle {
+  margin-top: 0.8em;
+  border: 1px solid #000;
+  background: var(--nav-bg);
+  padding: 0.2em 0.5em;
+  font: inherit;
+  cursor: pointer;
+}
+
+#theme-toggle:hover {
+  background: var(--nav-hover);
+  color: var(--nav-hover-fg);
+}
+
+.cell-tx {
+  background-color: var(--cell-tx) !important;
+  color: #000;
+}
+
+.cell-rx {
+  background-color: var(--cell-rx) !important;
+  color: #000;
+}
+
+.cell-lock {
+  background-color: var(--cell-lock) !important;
+  color: #fff;
+}
+
+.ww-cq {
+  padding: 0.8em 0.4em;
+  font-size: 0.95em;
+}
+
+.site-copy td {
+  white-space: normal;
+  padding: 0.35em 0.6em;
+}
+
+.matrix-x {
+  text-align: center;
+  font-weight: bold;
+}
+
+.empty-note {
+  padding: 0.8em;
+  color: #444;
+}
