@@ -1054,14 +1054,25 @@ def bridge_payload():
     return {"stamp": now_stamp(), "rows": rows}
 
 
-APP_MARKERS = ("qsoone", "voxdmr", "z3dmr")
+APP_MARKERS = (("qsoone", "QSOone"), ("voxdmr", "VoxDMR"), ("z3dmr", "Z3DMR"))
+
+
+def _app_blob(peer):
+    return " ".join(
+        str(peer.get(key) or "") for key in ("DESCRIPTION", "LOCATION")
+    ).lower()
+
+
+def app_label(peer):
+    blob = _app_blob(peer)
+    for mark, label in APP_MARKERS:
+        if mark in blob:
+            return label
+    return ""
 
 
 def is_app_peer(peer):
-    blob = " ".join(
-        str(peer.get(key) or "") for key in ("DESCRIPTION", "LOCATION")
-    ).lower()
-    return any(mark in blob for mark in APP_MARKERS)
+    return bool(app_label(peer))
 
 
 def dongle_payload():
@@ -1073,10 +1084,10 @@ def dongle_payload():
         static = (peer.get("TS1_STATIC") or []) + (peer.get("TS2_STATIC") or [])
         rows.append({
             "call": peer.get("CALLSIGN") or "",
-            "prot": hw_label(peer),
-            "ref": (peer.get("REFLECTOR") or (static[0] if static else "")),
+            "app": app_label(peer),
+            "dial": (peer.get("REFLECTOR") or (static[0] if static else "")),
             "id": str(peer.get("RADIO_ID") or peer.get("ID") or ""),
-            "sv": "1" if peer.get("CONNECTION") == "YES" else "0",
+            "conn": "YES" if peer.get("CONNECTION") == "YES" else "NO",
             "ts1_state": slot_state(s1),
             "ts2_state": slot_state(s2),
         })

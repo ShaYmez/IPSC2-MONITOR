@@ -265,18 +265,18 @@
       <thead><tr><th colspan="6">LINKED APPS</th></tr></thead>
       <tbody>
         <tr>
-          <th class="tableft">NR.</th><th class="tableft">DONGLE CALL</th>
-          <th class="tableft">PROT</th><th class="tableft">REF / TS1</th>
-          <th class="tableft">ID</th><th class="tableft">SV</th>
+          <th class="tableft">NR</th><th class="tableft">CALL</th>
+          <th class="tableft">APP</th><th class="tableft">DIAL</th>
+          <th class="tableft">ID</th><th class="tableft">CONN</th>
         </tr>`;
     (data.rows || []).forEach((row, idx) => {
       html += `<tr>
         <td>${idx + 1}</td>
         <td${cls(row.ts1_state || row.ts2_state)}>${esc(row.call)}</td>
-        <td>${esc(row.prot)}</td>
-        <td>${esc(row.ref)}</td>
+        <td>${esc(row.app)}</td>
+        <td>${esc(row.dial)}</td>
         <td>${esc(row.id)}</td>
-        <td>${esc(row.sv)}</td>
+        <td>${esc(row.conn)}</td>
       </tr>`;
     });
     html += "</tbody></table>";
