@@ -830,7 +830,7 @@ def status_payload():
             "net_ts1": alias_tg(item["tg"]) if item["ts"] == 1 else "",
             "call_ts2": item["call"] if item["ts"] == 2 else "",
             "net_ts2": alias_tg(item["tg"]) if item["ts"] == 2 else "",
-            "state": "tx",
+            "state": "rx",
         })
     registered.sort(key=lambda row: int(row["reflector"]) if str(row["reflector"]).isdigit() else 0)
     links = []

@@ -134,10 +134,10 @@
         <td>${esc(row.repeater)}</td>
         <td>${esc(row.info)}</td>
         <td>${esc(row.id)}</td>
-        <td${cls(row.ts1_state)}>${esc(row.ts1)}</td>
+        <td>${esc(row.ts1)}</td>
         <td>${esc(row.cq)}</td>
         <td${cls(row.ts1_info ? row.ts1_state : "")}>${lines(row.ts1_info)}</td>
-        <td${cls(row.ts2_state)}>${esc(row.ts2)}</td>
+        <td>${esc(row.ts2)}</td>
         <td${cls(row.ts2_info ? row.ts2_state : "")}>${lines(row.ts2_info)}</td>
         <td>${esc(row.ref)}</td>
         <td>${esc(row.start)}</td>
