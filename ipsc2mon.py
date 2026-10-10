@@ -64,6 +64,8 @@ BRIDGES = {}
 CTABLE = {"MASTERS": {}, "PEERS": {}, "OPENBRIDGES": {}}
 LASTHEARD = deque(maxlen=70)
 ACTIVE = {}
+HANG = {}
+HANG_SECS = 4
 RYSEN_VERSION = ""
 CONFIG_RX = ""
 CONNECTED = False
@@ -642,11 +644,18 @@ def ipsc2_call_info(item):
     return f"{headline}\n{call}"
 
 
-def slot_activity(peer, ts):
+def prune_hang():
+    now = time()
+    for key in list(HANG):
+        if now >= float(HANG[key].get("until") or 0):
+            HANG.pop(key, None)
+
+
+def _slot_from_activity(peer, ts, items, hang):
     static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
     pid = str(peer.get("ID") or "")
     rid = str(peer.get("RADIO_ID") or "")
-    for item in ACTIVE.values():
+    for item in items:
         if item.get("ts") != ts:
             continue
         tg = str(item.get("tg") or "")
@@ -654,13 +663,27 @@ def slot_activity(peer, ts):
         is_source = source in (pid, rid)
         if tg not in static and not is_source:
             continue
+        if hang:
+            state = "rx-hang" if is_source else "tx-hang"
+        else:
+            state = "rx" if is_source else "tx"
         return {
-            "state": "rx" if is_source else "tx",
+            "state": state,
             "info": ipsc2_call_info(item),
             "cq": "CQ",
             "tg": tg,
             "show_tg": tg if is_source and tg not in static else "",
         }
+    return None
+
+
+def slot_activity(peer, ts):
+    live = _slot_from_activity(peer, ts, ACTIVE.values(), hang=False)
+    if live:
+        return live
+    hung = _slot_from_activity(peer, ts, HANG.values(), hang=True)
+    if hung:
+        return hung
     return {"state": "", "info": "", "cq": "", "tg": "", "show_tg": ""}
 
 
@@ -718,6 +741,7 @@ def rts_update(parts):
             streams.pop(stream_id, None)
     key = f"{destination}:{time_slot}"
     if action == "START":
+        HANG.pop(key, None)
         ACTIVE[key] = {
             "tg": destination,
             "ts": time_slot,
@@ -727,7 +751,10 @@ def rts_update(parts):
             "name": alias_tg(destination),
         }
     elif action == "END":
-        ACTIVE.pop(key, None)
+        ended = ACTIVE.pop(key, None)
+        if ended:
+            ended["until"] = time() + HANG_SECS
+            HANG[key] = ended
 
 
 def _event_rssi(parts):
@@ -848,6 +875,7 @@ def sorted_peers(kind=None):
 
 
 def status_payload():
+    prune_hang()
     registered = []
     seen = set()
     for item in ACTIVE.values():
@@ -1107,6 +1135,7 @@ class ReportFactory(ReconnectingClientFactory):
         CTABLE["PEERS"].clear()
         CTABLE["OPENBRIDGES"].clear()
         ACTIVE.clear()
+        HANG.clear()
         logger.info("Lost RYSEN report: %s", reason)
         ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
 

@@ -28,6 +28,8 @@
   --footer-fg: #ffffff;
   --cell-tx: #ff6600;
   --cell-rx: #3cb371;
+  --cell-tx-hang: #ffcc99;
+  --cell-rx-hang: #b7e0c8;
   --cell-lock: #c00;
 }
 
@@ -246,6 +248,16 @@ tbody tr:nth-child(even) {
 
 .cell-rx {
   background-color: var(--cell-rx) !important;
+  color: #000;
+}
+
+.cell-tx-hang {
+  background-color: var(--cell-tx-hang) !important;
+  color: #000;
+}
+
+.cell-rx-hang {
+  background-color: var(--cell-rx-hang) !important;
   color: #000;
 }
 

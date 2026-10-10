@@ -39,6 +39,8 @@
   function cls(state) {
     if (state === "tx") return " class=\"cell-tx\"";
     if (state === "rx") return " class=\"cell-rx\"";
+    if (state === "tx-hang") return " class=\"cell-tx-hang\"";
+    if (state === "rx-hang") return " class=\"cell-rx-hang\"";
     if (state === "lock") return " class=\"cell-lock\"";
     return "";
   }
