@@ -241,7 +241,18 @@ def load_alias_files(cfg):
         base = HERE / base
     _load_json_aliases(base / cfg["peer_file"], "peer")
     _load_json_aliases(base / cfg["tg_file"], "tg")
-    _load_subscriber_file(base / cfg["sub_file"])
+    _load_subscriber_file(_subscriber_path(base, cfg["sub_file"]))
+
+
+def _subscriber_path(base, configured):
+    chosen = base / configured if configured else None
+    if chosen and chosen.is_file():
+        return chosen
+    for name in ("subscriber_ids.json", "user.csv"):
+        candidate = base / name
+        if candidate.is_file():
+            return candidate
+    return chosen or (base / "subscriber_ids.json")
 
 
 def _records_from_json(path):
@@ -281,11 +292,32 @@ def _load_json_aliases(path, kind):
     logger.info("Loaded %s %s aliases from %s", len(ALIASES[kind]), kind, path.name)
 
 
+def _subscriber_call(rec):
+    if not isinstance(rec, dict):
+        return str(rec or "")
+    return (
+        rec.get("callsign")
+        or rec.get("call_sign")
+        or rec.get("CALLSIGN")
+        or rec.get("name")
+        or rec.get("NAME")
+        or ""
+    )
+
+
 def _load_subscriber_file(path):
-    if not path.is_file():
+    if not path or not path.is_file():
         return
     if path.suffix.lower() == ".json":
-        _load_json_aliases(path, "sub")
+        for rec in _records_from_json(path):
+            try:
+                rid = int(rec.get("id") or rec.get("ID") or rec.get("RADIO_ID") or 0)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            call = _subscriber_call(rec)
+            if rid > 0 and call:
+                ALIASES["sub"][rid] = call
+        logger.info("Loaded %s subscriber aliases from %s", len(ALIASES["sub"]), path.name)
         return
     try:
         with path.open("r", encoding="utf-8", errors="replace") as handle:
@@ -295,13 +327,9 @@ def _load_subscriber_file(path):
                     rid = int(rec.get("RADIO_ID") or rec.get("RADIOID") or rec.get("id") or 0)
                 except (TypeError, ValueError):
                     continue
-                if rid <= 0:
-                    continue
-                name = rec.get("FIRST_NAME") or rec.get("fname") or rec.get("NAME") or ""
-                ALIASES["sub"][rid] = {
-                    "CALLSIGN": rec.get("CALLSIGN") or rec.get("callsign") or "",
-                    "NAME": name,
-                }
+                call = _subscriber_call(rec)
+                if rid > 0 and call:
+                    ALIASES["sub"][rid] = call
         logger.info("Loaded %s subscriber aliases from %s", len(ALIASES["sub"]), path.name)
     except Exception as exc:
         logger.info("Subscriber file %s skipped: %s", path, exc)
