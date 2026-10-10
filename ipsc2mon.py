@@ -363,6 +363,8 @@ def classify_peer(peer_id, peer):
         return "bridge"
     if len(pid) >= 7:
         return "hotspot"
+    if pid.isdigit() and len(pid) <= 4:
+        return "service"
     return "repeater"
 
 
@@ -744,6 +746,24 @@ def process_message(raw):
         logger.debug("LINK_EVENT %s", text[1:])
 
 
+def peer_radio_id(peer):
+    return str(peer.get("RADIO_ID") or peer.get("ID") or "")
+
+
+def peer_list_rank(radio_id):
+    if radio_id.isdigit() and len(radio_id) == 6:
+        return 0
+    if radio_id.isdigit() and len(radio_id) >= 7:
+        return 1
+    return 2
+
+
+def peer_sort_key(item):
+    peer = item[1]
+    radio_id = peer_radio_id(peer)
+    return (peer_list_rank(radio_id), (peer.get("CALLSIGN") or "").upper(), radio_id)
+
+
 def sorted_peers(kind=None):
     rows = []
     for system, peer in iter_peers():
@@ -751,7 +771,7 @@ def sorted_peers(kind=None):
         if kind and peer_kind != kind:
             continue
         rows.append((system, peer))
-    rows.sort(key=lambda item: (item[1].get("CALLSIGN") or "", str(item[1].get("ID"))))
+    rows.sort(key=peer_sort_key)
     return rows
 
 
