@@ -352,9 +352,11 @@ def slots_label(value):
 
 def classify_peer(peer_id, peer):
     protocol = peer.get("PROTOCOL") or "HOMEBREW"
-    pid = str(peer_id)
+    pid = str(peer.get("RADIO_ID") or peer_id)
     rx = peer.get("RX_FREQ") or ""
     tx = peer.get("TX_FREQ") or ""
+    if pid.isdigit() and len(pid) <= 4:
+        return "service"
     if protocol in ("IPSC", "HYTERA"):
         return "repeater"
     if protocol == "OPENBRIDGE":
@@ -363,8 +365,6 @@ def classify_peer(peer_id, peer):
         return "bridge"
     if len(pid) >= 7:
         return "hotspot"
-    if pid.isdigit() and len(pid) <= 4:
-        return "service"
     return "repeater"
 
 
@@ -400,6 +400,9 @@ def apply_peer_fields(peer_conf, peer_id):
         if callsign == str(radio_id):
             callsign = field_str(peer_conf.get("CALLSIGN")) or radio_id
     location = field_str(peer_conf.get("LOCATION")) or alias_name(radio_id, "peer")
+    color_code = field_str(peer_conf.get("COLOR_CODE"))
+    if location and color_code and color_code not in ("0",):
+        location = f"{location} ({color_code})"
     ts1, ts2, n1, n2, extra = numbered_slots_from_options(peer_conf.get("OPTIONS"))
     proto = field_str(peer_conf.get("PROTOCOL")) or "HOMEBREW"
     return {
@@ -549,16 +552,19 @@ def clean_timeouts():
 
 def hw_label(peer):
     proto = (peer.get("PROTOCOL") or "").upper()
+    package = (peer.get("PACKAGE_ID") or "").upper()
     kind = classify_peer(peer.get("ID"), peer)
-    if proto == "IPSC":
+    if proto == "IPSC" or "IPSC" in package or "MOTOROLA" in package:
         return "IPSC"
-    if proto == "HYTERA":
+    if proto == "HYTERA" or "HYTERA" in package:
         return "HYT"
     if proto == "OPENBRIDGE" or kind == "bridge":
         return "OBP"
-    if kind == "hotspot":
-        return "MMD"
-    return "HB"
+    if kind == "service":
+        return "SVC"
+    if "MMDVM" in package or kind in ("hotspot", "repeater"):
+        return "MMDVM"
+    return "MMDVM"
 
 
 def rptr_role(peer):
@@ -594,6 +600,40 @@ def slot_state(slot):
     if trx in ("TX", "UNIT_RX"):
         return "tx"
     return ""
+
+
+def ipsc2_call_info(item):
+    tg = str(item.get("tg") or "")
+    name = item.get("name") or ""
+    radio_id = item.get("radio_id") or ""
+    call = item.get("call") or str(radio_id)
+    if name:
+        headline = f"{tg}/{name} ({radio_id})"
+    else:
+        headline = f"{tg} ({radio_id})"
+    return f"{headline}\n{call}"
+
+
+def slot_activity(peer, ts):
+    static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
+    pid = str(peer.get("ID") or "")
+    rid = str(peer.get("RADIO_ID") or "")
+    for item in ACTIVE.values():
+        if item.get("ts") != ts:
+            continue
+        tg = str(item.get("tg") or "")
+        source = str(item.get("peer") or "")
+        is_source = source in (pid, rid)
+        if tg not in static and not is_source:
+            continue
+        return {
+            "state": "rx" if is_source else "tx",
+            "info": ipsc2_call_info(item),
+            "cq": "CQ",
+            "tg": tg,
+            "show_tg": tg if is_source and tg not in static else "",
+        }
+    return {"state": "", "info": "", "cq": "", "tg": "", "show_tg": ""}
 
 
 def rts_update(parts):
@@ -790,29 +830,34 @@ def status_payload():
             "net_ts1": alias_tg(item["tg"]) if item["ts"] == 1 else "",
             "call_ts2": item["call"] if item["ts"] == 2 else "",
             "net_ts2": alias_tg(item["tg"]) if item["ts"] == 2 else "",
-            "state": "rx",
+            "state": "tx",
         })
     registered.sort(key=lambda row: int(row["reflector"]) if str(row["reflector"]).isdigit() else 0)
     links = []
     for _, peer in sorted_peers():
-        s1, s2 = peer.get(1) or {}, peer.get(2) or {}
+        act1 = slot_activity(peer, 1)
+        act2 = slot_activity(peer, 2)
         ts1 = " ".join(peer.get("TS1_STATIC") or [])
         ts2 = " ".join(peer.get("TS2_STATIC") or [])
+        if act1.get("show_tg") and act1["show_tg"] not in ts1.split():
+            ts1 = (ts1 + " " + act1["show_tg"]).strip()
+        if act2.get("show_tg") and act2["show_tg"] not in ts2.split():
+            ts2 = (ts2 + " " + act2["show_tg"]).strip()
         links.append({
             "repeater": peer.get("CALLSIGN") or "",
             "info": peer.get("LOCATION") or "",
             "id": str(peer.get("RADIO_ID") or peer.get("ID") or ""),
             "ts1": ts1,
-            "cq": "CQ" if (s1.get("TS") or s2.get("TS")) else "",
-            "ts1_info": s1.get("CALL") or "",
+            "cq": act1.get("cq") or act2.get("cq") or "",
+            "ts1_info": act1.get("info") or "",
             "ts2": ts2,
-            "ts2_info": s2.get("CALL") or "",
+            "ts2_info": act2.get("info") or "",
             "ref": peer.get("REFLECTOR") or "",
             "start": peer.get("START_REF") or "",
-            "hardware": peer.get("PACKAGE_ID") or hw_label(peer),
+            "hardware": hw_label(peer),
             "kind": classify_peer(peer.get("ID"), peer),
-            "ts1_state": slot_state(s1),
-            "ts2_state": slot_state(s2),
+            "ts1_state": act1.get("state") or "",
+            "ts2_state": act2.get("state") or "",
             "connected": peer.get("CONNECTED") or "",
         })
     return {
