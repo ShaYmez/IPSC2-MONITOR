@@ -180,13 +180,24 @@ def numbered_slots_from_options(options_value):
                 numbered1[idx] = tgs
             elif key.startswith("TS2"):
                 numbered2[idx] = tgs
-        elif key in ("REFLECTOR", "START_REF", "REF", "START"):
+        elif key in (
+            "REFLECTOR", "START_REF", "REF", "START",
+            "DIAL", "STARTREF", "DEFAULT_REFLECTOR",
+        ):
             extra[key] = value
     if numbered1:
         ts1 = [tg for idx in range(1, 10) for tg in numbered1.get(idx, [])]
     if numbered2:
         ts2 = [tg for idx in range(1, 10) for tg in numbered2.get(idx, [])]
     return comma_tg_list(ts1), comma_tg_list(ts2), numbered1, numbered2, extra
+
+
+def pick_dial_option(extra, keys):
+    for key in keys:
+        val = extra.get(key)
+        if val and val not in ("0", "9"):
+            return val
+    return ""
 
 
 def peer_own_options(syscfg, peer_id):
@@ -457,8 +468,8 @@ def apply_peer_fields(peer_conf, peer_id):
         "TS2_STATIC": ts2,
         "TS1_SLOTS": n1,
         "TS2_SLOTS": n2,
-        "REFLECTOR": extra.get("REFLECTOR") or extra.get("REF") or "",
-        "START_REF": extra.get("START_REF") or extra.get("START") or "",
+        "REFLECTOR": pick_dial_option(extra, ("DIAL", "DEFAULT_REFLECTOR", "REFLECTOR", "REF")),
+        "START_REF": pick_dial_option(extra, ("STARTREF", "START_REF", "START")),
         "OPTIONS": field_str(peer_conf.get("OPTIONS")),
         1: empty_slot(),
         2: empty_slot(),
@@ -556,10 +567,12 @@ def _apply_options(config):
                 peer["TS1_SLOTS"] = n1
             if n2:
                 peer["TS2_SLOTS"] = n2
-            if extra.get("REFLECTOR") or extra.get("REF"):
-                peer["REFLECTOR"] = extra.get("REFLECTOR") or extra.get("REF")
-            if extra.get("START_REF") or extra.get("START"):
-                peer["START_REF"] = extra.get("START_REF") or extra.get("START")
+            dial = pick_dial_option(extra, ("DIAL", "DEFAULT_REFLECTOR", "REFLECTOR", "REF"))
+            start = pick_dial_option(extra, ("STARTREF", "START_REF", "START"))
+            if dial:
+                peer["REFLECTOR"] = dial
+            if start:
+                peer["START_REF"] = start
             if ts1 or ts2:
                 peer["CONFIG"] = "OPTIONS"
 
