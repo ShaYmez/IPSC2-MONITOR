@@ -23,6 +23,10 @@
   let page = "status";
   let fetchGen = 0;
   let site = { title: "System X", theme: "de" };
+  let interacting = false;
+  let pendingHtml = null;
+  let lastApplied = "";
+  let idleTimer = 0;
 
   function esc(value) {
     return String(value == null ? "" : value)
@@ -343,17 +347,72 @@
     return resp.json();
   }
 
+  function captureScroll() {
+    return {
+      mainTop: main.scrollTop,
+      mainLeft: main.scrollLeft,
+      winY: window.scrollY,
+      winX: window.scrollX,
+      tables: Array.from(main.querySelectorAll(".table-scroll")).map((el) => ({
+        top: el.scrollTop,
+        left: el.scrollLeft,
+      })),
+    };
+  }
+
+  function restoreScroll(saved) {
+    main.scrollTop = saved.mainTop;
+    main.scrollLeft = saved.mainLeft;
+    window.scrollTo(saved.winX, saved.winY);
+    const wraps = main.querySelectorAll(".table-scroll");
+    saved.tables.forEach((pos, idx) => {
+      if (!wraps[idx]) return;
+      wraps[idx].scrollTop = pos.top;
+      wraps[idx].scrollLeft = pos.left;
+    });
+  }
+
+  function applyHtml(html) {
+    if (html === lastApplied) return;
+    const saved = captureScroll();
+    main.innerHTML = html;
+    if (!html.startsWith("<p class=\"empty-note\"")) {
+      wrapTables(main);
+    }
+    lastApplied = html;
+    restoreScroll(saved);
+  }
+
+  function markBusy() {
+    interacting = true;
+    window.clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => {
+      interacting = false;
+      if (pendingHtml != null) {
+        applyHtml(pendingHtml);
+        pendingHtml = null;
+      }
+    }, 800);
+  }
+
+  function paint(html) {
+    if (interacting) {
+      pendingHtml = html;
+      return;
+    }
+    applyHtml(html);
+  }
+
   async function refresh() {
     const endpoint = PAGES[page] || "status";
     const gen = ++fetchGen;
     try {
       const data = await fetchJson("api/" + endpoint);
       if (gen !== fetchGen) return;
-      main.innerHTML = RENDERERS[endpoint](data);
-      wrapTables(main);
+      paint(RENDERERS[endpoint](data));
     } catch (err) {
       if (gen !== fetchGen) return;
-      main.innerHTML = `<p class="empty-note">Waiting for dashboard data (${esc(err.message)}).</p>`;
+      paint(`<p class="empty-note">Waiting for dashboard data (${esc(err.message)}).</p>`);
     }
   }
 
@@ -374,6 +433,9 @@
   function showPage(name) {
     const next = PAGES[name] ? name : "status";
     page = next;
+    interacting = false;
+    pendingHtml = null;
+    lastApplied = "";
     setNav();
     refresh();
     const hash = "#" + next;
@@ -400,6 +462,11 @@
     const current = document.documentElement.getAttribute("data-theme");
     applyTheme(current === "uk" ? "de" : "uk");
   });
+
+  ["touchstart", "touchmove", "pointerdown", "wheel"].forEach((type) => {
+    document.addEventListener(type, markBusy, { passive: true });
+  });
+  document.addEventListener("scroll", markBusy, { passive: true, capture: true });
 
   applyTheme(localStorage.getItem("ipsc2-dash-theme") || "de");
   showPage(location.hash.replace("#", "") || "status");
