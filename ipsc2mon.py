@@ -1050,13 +1050,10 @@ APP_MARKERS = ("qsoone", "voxdmr", "z3dmr")
 
 
 def is_app_peer(peer):
-    kind = classify_peer(peer.get("ID"), peer)
-    if kind == "hotspot":
-        return True
-    if kind != "repeater":
-        return False
-    desc = (peer.get("DESCRIPTION") or "").lower()
-    return any(mark in desc for mark in APP_MARKERS)
+    blob = " ".join(
+        str(peer.get(key) or "") for key in ("DESCRIPTION", "LOCATION")
+    ).lower()
+    return any(mark in blob for mark in APP_MARKERS)
 
 
 def dongle_payload():
