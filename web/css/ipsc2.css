@@ -78,7 +78,7 @@ body {
   left: 0;
   width: 7em;
   top: 4em;
-  bottom: 2em;
+  bottom: 2.45em;
   background-color: var(--nav-bg);
 }
 
@@ -87,7 +87,7 @@ body {
   left: 7em;
   right: 0;
   top: 4em;
-  bottom: 2em;
+  bottom: 2.45em;
   overflow: auto;
   background: var(--page-bg);
   padding-bottom: 0.5em;
@@ -95,7 +95,7 @@ body {
 
 #footer {
   position: fixed;
-  height: 2em;
+  height: 2.45em;
   left: 0;
   right: 0;
   bottom: 0;
@@ -188,6 +188,13 @@ tbody tr:nth-child(even) {
 .bottom {
   border-collapse: collapse;
   width: 100%;
+}
+
+.bottom td,
+.bottom td.accent-bar {
+  background-color: var(--accent);
+  padding: 0.28em;
+  border: 0;
 }
 
 .bottom th {
