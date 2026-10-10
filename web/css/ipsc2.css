@@ -234,15 +234,11 @@ tbody tr:nth-child(even) {
 #theme-toggle {
   margin-top: 0.8em;
   border: 1px solid #000;
-  background: var(--nav-bg);
+  background: var(--nav-hover);
+  color: var(--nav-hover-fg);
   padding: 0.2em 0.5em;
   font: inherit;
   cursor: pointer;
-}
-
-#theme-toggle:hover {
-  background: var(--nav-hover);
-  color: var(--nav-hover-fg);
 }
 
 .cell-tx {
@@ -287,6 +283,8 @@ tbody tr:nth-child(even) {
 .matrix-x {
   text-align: center;
   font-weight: bold;
+  background-color: #ffcc00 !important;
+  color: #000;
 }
 
 .empty-note {

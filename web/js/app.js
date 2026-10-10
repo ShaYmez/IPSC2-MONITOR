@@ -208,7 +208,9 @@
         <td>${esc(row.id)}</td>
         <td>${esc(row.info)}</td>`;
       tgs.forEach((tg) => {
-        html += `<td class="matrix-x">${marks.indexOf(tg) >= 0 ? "X" : ""}</td>`;
+        html += marks.indexOf(tg) >= 0
+          ? "<td class=\"matrix-x\">X</td>"
+          : "<td></td>";
       });
       html += "</tr>";
     });

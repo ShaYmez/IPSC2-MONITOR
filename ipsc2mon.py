@@ -809,6 +809,8 @@ def record_lastheard(parts):
         return
     if parts[1] != "END" or parts[2] == "TX":
         return
+    if parts[3] in CTABLE["OPENBRIDGES"]:
+        return
     try:
         duration = float(parts[9])
         source_peer = int(parts[5])
@@ -819,12 +821,18 @@ def record_lastheard(parts):
     except (TypeError, ValueError):
         return
     peer = find_peer(source_peer)
-    hw = hw_label(peer) if peer else "MMD"
-    role = rptr_role(peer) if peer else "HOTSPOT"
+    if not peer:
+        return
+    if classify_peer(peer.get("ID"), peer) not in ("repeater", "hotspot"):
+        return
+    hw = hw_label(peer)
+    role = rptr_role(peer)
     try:
         floor = f"{int(stream_id):08X}"
     except (TypeError, ValueError):
         floor = str(stream_id)
+    if any(rec.get("floor") == floor for rec in LASTHEARD):
+        return
     LASTHEARD.appendleft({
         "hw": hw,
         "time": now_stamp(),
