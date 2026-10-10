@@ -230,8 +230,7 @@ tbody tr:nth-child(even) {
 }
 
 .table-scroll table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
 }
 
 #theme-toggle {
