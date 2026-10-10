@@ -677,6 +677,26 @@ def _slot_from_activity(peer, ts, items, hang):
     return None
 
 
+def peer_holds_tg(peer, tg, ts):
+    tg = str(tg)
+    static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
+    if tg in static:
+        return True
+    return str(peer.get("REFLECTOR") or "") == tg
+
+
+def activity_is_local(item):
+    tg = item.get("tg")
+    ts = item.get("ts")
+    source = str(item.get("peer") or "")
+    for _, peer in iter_peers():
+        if source in (str(peer.get("ID") or ""), str(peer.get("RADIO_ID") or "")):
+            return True
+        if peer_holds_tg(peer, tg, ts):
+            return True
+    return False
+
+
 def slot_activity(peer, ts):
     live = _slot_from_activity(peer, ts, ACTIVE.values(), hang=False)
     if live:
@@ -879,6 +899,8 @@ def status_payload():
     registered = []
     seen = set()
     for item in ACTIVE.values():
+        if not activity_is_local(item):
+            continue
         key = (item["tg"], item["ts"])
         if key in seen:
             continue
