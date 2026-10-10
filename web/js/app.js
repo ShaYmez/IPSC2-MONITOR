@@ -111,7 +111,11 @@
     });
     html += emptyRows(6, Math.max(0, 5 - registered.length));
     html += `</tbody></table>
-      <div class="ww-cq">WW-CQ active talkgroups: ${esc((data.ww_cq || []).join(" ") || "<")}</div>
+      <div class="ww-cq">WW-CQ active talkgroups: ${
+        (data.ww_cq || []).length
+          ? (data.ww_cq || []).map((tg) => `<span class="cell-rx">${esc(tg)}</span>`).join(" ")
+          : "&lt;"
+      }</div>
       <table>
         <colgroup>
           <col width="3%"><col width="7%"><col width="13%"><col width="5%"><col width="10%">

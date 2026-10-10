@@ -278,6 +278,10 @@ tbody tr:nth-child(even) {
   font-size: 0.95em;
 }
 
+.ww-cq .cell-rx {
+  padding: 0.05em 0.35em;
+}
+
 .site-copy td {
   white-space: normal;
   padding: 0.35em 0.6em;
