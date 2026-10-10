@@ -818,7 +818,11 @@ def peer_radio_id(peer):
     return str(peer.get("RADIO_ID") or peer.get("ID") or "")
 
 
-def peer_list_rank(radio_id):
+def peer_list_rank(peer):
+    kind = classify_peer(peer.get("ID"), peer)
+    if kind in ("bridge", "service"):
+        return 2
+    radio_id = peer_radio_id(peer)
     if radio_id.isdigit() and len(radio_id) == 6:
         return 0
     if radio_id.isdigit() and len(radio_id) >= 7:
@@ -829,7 +833,7 @@ def peer_list_rank(radio_id):
 def peer_sort_key(item):
     peer = item[1]
     radio_id = peer_radio_id(peer)
-    return (peer_list_rank(radio_id), (peer.get("CALLSIGN") or "").upper(), radio_id)
+    return (peer_list_rank(peer), (peer.get("CALLSIGN") or "").upper(), radio_id)
 
 
 def sorted_peers(kind=None):
