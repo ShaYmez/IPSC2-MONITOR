@@ -1241,7 +1241,11 @@ def bridge_payload():
     return {"stamp": now_stamp(), "rows": rows}
 
 
-APP_MARKERS = (("qsoone", "QSOone"), ("voxdmr", "VoxDMR"), ("z3dmr", "Z3DMR"))
+APP_MARKERS = (
+    (("qsoone", "qso one"), "QSO One"),
+    (("voxdmr",), "VoxDMR"),
+    (("z3dmr",), "Z3DMR"),
+)
 
 
 def _app_blob(peer):
@@ -1252,8 +1256,8 @@ def _app_blob(peer):
 
 def app_label(peer):
     blob = _app_blob(peer)
-    for mark, label in APP_MARKERS:
-        if mark in blob:
+    for marks, label in APP_MARKERS:
+        if any(mark in blob for mark in marks):
             return label
     return ""
 
