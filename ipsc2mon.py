@@ -716,7 +716,6 @@ def _is_local_radio(peer_id):
 
 
 def _slot_from_activity(peer, ts, items, hang):
-    static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
     for item in items:
         if item.get("ts") != ts:
             continue
@@ -733,9 +732,19 @@ def _slot_from_activity(peer, ts, items, hang):
             "info": ipsc2_call_info(item),
             "cq": "CQ",
             "tg": tg,
-            "show_tg": tg if is_source and tg not in static else "",
+            "show_tg": tg if is_source and tg else "",
         }
     return None
+
+
+def mark_keyed_tg(static_text, keyed_tg):
+    tg = str(keyed_tg or "").strip()
+    if not tg:
+        return static_text
+    tokens = static_text.split()
+    if tg in tokens:
+        return " ".join(f"({item})" if item == tg else item for item in tokens)
+    return (static_text + f" ({tg})").strip()
 
 
 def peer_holds_tg(peer, tg, ts):
@@ -769,13 +778,12 @@ def _activity_from_slot(peer, ts):
         "call": slot.get("CALL") or "",
         "radio_id": slot.get("SRC") or "",
     }
-    static = [str(value) for value in (peer.get(f"TS{ts}_STATIC") or [])]
     return {
         "state": "rx" if is_rx else "tx",
         "info": ipsc2_call_info(item),
         "cq": "CQ",
         "tg": tg,
-        "show_tg": tg if is_rx and tg and tg not in static else "",
+        "show_tg": tg if is_rx and tg else "",
     }
 
 
@@ -1044,12 +1052,8 @@ def status_payload():
     for _, peer in sorted_peers():
         act1 = slot_activity(peer, 1)
         act2 = slot_activity(peer, 2)
-        ts1 = " ".join(peer.get("TS1_STATIC") or [])
-        ts2 = " ".join(peer.get("TS2_STATIC") or [])
-        if act1.get("show_tg") and act1["show_tg"] not in ts1.split():
-            ts1 = (ts1 + " " + act1["show_tg"]).strip()
-        if act2.get("show_tg") and act2["show_tg"] not in ts2.split():
-            ts2 = (ts2 + " " + act2["show_tg"]).strip()
+        ts1 = mark_keyed_tg(" ".join(peer.get("TS1_STATIC") or []), act1.get("show_tg"))
+        ts2 = mark_keyed_tg(" ".join(peer.get("TS2_STATIC") or []), act2.get("show_tg"))
         links.append({
             "repeater": peer.get("CALLSIGN") or "",
             "info": peer.get("LOCATION") or "",
