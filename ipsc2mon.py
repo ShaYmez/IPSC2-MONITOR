@@ -67,9 +67,12 @@ ACTIVE = {}
 HANG = {}
 ENDED_SID = {}
 ENDED_KEY = {}
+DYNAMIC = {}
 HANG_SECS = 4
 ACTIVE_MAX_SECS = 180
 END_GUARD_SECS = 3
+UA_TIMER_DEFAULT = 10
+DIAL_SERVICE = frozenset(("0", "9", "4000", "5000"))
 RYSEN_VERSION = ""
 CONFIG_RX = ""
 CONNECTED = False
@@ -187,6 +190,7 @@ def numbered_slots_from_options(options_value):
         elif key in (
             "REFLECTOR", "START_REF", "REF", "START",
             "DIAL", "STARTREF", "DEFAULT_REFLECTOR",
+            "TIMER", "RELINKTIME", "DEFAULT_UA_TIMER",
         ):
             extra[key] = value
     if numbered1:
@@ -202,6 +206,18 @@ def pick_dial_option(extra, keys):
         if val and val not in ("0", "9"):
             return val
     return ""
+
+
+def pick_ua_timer(extra):
+    for key in ("TIMER", "RELINKTIME", "DEFAULT_UA_TIMER"):
+        val = extra.get(key)
+        if val is None or val == "":
+            continue
+        try:
+            return max(0, int(val))
+        except (TypeError, ValueError):
+            continue
+    return UA_TIMER_DEFAULT
 
 
 def peer_own_options(syscfg, peer_id):
@@ -474,6 +490,7 @@ def apply_peer_fields(peer_conf, peer_id):
         "TS2_SLOTS": n2,
         "REFLECTOR": pick_dial_option(extra, ("DIAL", "DEFAULT_REFLECTOR", "REFLECTOR", "REF")),
         "START_REF": pick_dial_option(extra, ("STARTREF", "START_REF", "START")),
+        "UA_TIMER": pick_ua_timer(extra),
         "OPTIONS": field_str(peer_conf.get("OPTIONS")),
         1: empty_slot(),
         2: empty_slot(),
@@ -578,6 +595,7 @@ def _apply_options(config):
                 peer["REFLECTOR"] = dial
             if start:
                 peer["START_REF"] = start
+            peer["UA_TIMER"] = pick_ua_timer(extra)
             if ts1 or ts2:
                 peer["CONFIG"] = "OPTIONS"
 
@@ -699,6 +717,7 @@ def prune_ended():
 def prune_activity():
     now = time()
     prune_ended()
+    prune_dynamic()
     for key in list(ACTIVE):
         seen = float(ACTIVE[key].get("seen") or 0)
         if seen and now - seen > ACTIVE_MAX_SECS:
@@ -743,8 +762,58 @@ def mark_keyed_tg(static_text, keyed_tg):
         return static_text
     tokens = static_text.split()
     if tg in tokens:
-        return " ".join(f"({item})" if item == tg else item for item in tokens)
+        return static_text
     return (static_text + f" ({tg})").strip()
+
+
+def peer_ua_timer(peer):
+    try:
+        return max(0, int(peer.get("UA_TIMER")))
+    except (TypeError, ValueError):
+        return UA_TIMER_DEFAULT
+
+
+def dynamic_key(peer, ts):
+    return (str(peer.get("ID") or peer.get("RADIO_ID") or ""), int(ts))
+
+
+def remember_dynamic(peer, ts, tgid):
+    tg = str(tgid or "").strip()
+    key = dynamic_key(peer, ts)
+    static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
+    if not tg or tg in DIAL_SERVICE or tg in static:
+        DYNAMIC.pop(key, None)
+        return
+    minutes = peer_ua_timer(peer)
+    DYNAMIC[key] = {
+        "tg": tg,
+        "until": None if minutes == 0 else time() + minutes * 60,
+    }
+
+
+def peer_dynamic_tg(peer, ts):
+    key = dynamic_key(peer, ts)
+    item = DYNAMIC.get(key)
+    if not item:
+        return ""
+    until = item.get("until")
+    if until is not None and time() >= float(until):
+        DYNAMIC.pop(key, None)
+        return ""
+    tg = str(item.get("tg") or "")
+    static = [str(value) for value in (peer.get(f"TS{ts}_STATIC") or [])]
+    if not tg or tg in static:
+        DYNAMIC.pop(key, None)
+        return ""
+    return tg
+
+
+def prune_dynamic():
+    now = time()
+    for key in list(DYNAMIC):
+        until = DYNAMIC[key].get("until")
+        if until is not None and now >= float(until):
+            DYNAMIC.pop(key, None)
 
 
 def peer_holds_tg(peer, tg, ts):
@@ -846,6 +915,16 @@ def rts_update(parts):
                 or str(slot.get("DEST") or "") == str(destination)
             ):
                 peer[time_slot] = empty_slot()
+        if action == "START":
+            talker = find_peer(source_peer)
+            if not talker or not _is_local_radio(source_peer):
+                for _, peer in iter_peers():
+                    slot = peer.get(time_slot) or {}
+                    if slot.get("TRX") == "RX" and str(slot.get("SID") or "") == stream_id:
+                        talker = peer
+                        break
+            if talker:
+                remember_dynamic(talker, time_slot, destination)
     if system in CTABLE["OPENBRIDGES"]:
         streams = CTABLE["OPENBRIDGES"][system]["STREAMS"]
         if action == "START":
@@ -1052,8 +1131,8 @@ def status_payload():
     for _, peer in sorted_peers():
         act1 = slot_activity(peer, 1)
         act2 = slot_activity(peer, 2)
-        ts1 = mark_keyed_tg(" ".join(peer.get("TS1_STATIC") or []), act1.get("show_tg"))
-        ts2 = mark_keyed_tg(" ".join(peer.get("TS2_STATIC") or []), act2.get("show_tg"))
+        ts1 = mark_keyed_tg(" ".join(peer.get("TS1_STATIC") or []), peer_dynamic_tg(peer, 1))
+        ts2 = mark_keyed_tg(" ".join(peer.get("TS2_STATIC") or []), peer_dynamic_tg(peer, 2))
         links.append({
             "repeater": peer.get("CALLSIGN") or "",
             "info": peer.get("LOCATION") or "",
@@ -1312,6 +1391,7 @@ class ReportFactory(ReconnectingClientFactory):
         HANG.clear()
         ENDED_SID.clear()
         ENDED_KEY.clear()
+        DYNAMIC.clear()
         logger.info("Lost RYSEN report: %s", reason)
         ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
 
