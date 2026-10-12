@@ -117,6 +117,7 @@ def load_cfg(path):
         "contact_name": parser.get("SITE", "CONTACT_NAME", fallback=""),
         "contact_country": parser.get("SITE", "CONTACT_COUNTRY", fallback="United Kingdom"),
         "contact_email": parser.get("SITE", "CONTACT_EMAIL", fallback=""),
+        "selfcare_url": parser.get("SITE", "SELFCARE_URL", fallback="/dashboard/sslogin.php").strip(),
         "files_path": parser.get("FILES", "PATH", fallback="./data"),
         "peer_file": parser.get("FILES", "PEER_FILE", fallback="peer_ids.json"),
         "sub_file": parser.get("FILES", "SUBSCRIBER_FILE", fallback="user.csv"),
@@ -1327,6 +1328,7 @@ def site_payload():
         "contact_name": SITE.get("contact_name") or "",
         "contact_country": SITE.get("contact_country") or "",
         "contact_email": SITE.get("contact_email") or "",
+        "selfcare_url": SITE.get("selfcare_url") or "",
         "peer_count": sum(len(m["PEERS"]) for m in CTABLE["MASTERS"].values()),
         "bridge_count": len(BRIDGES or {}),
     }

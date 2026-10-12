@@ -17,6 +17,7 @@
     bridge: "bridge",
     dongle: "dongle",
     service: "service",
+    selfcare: "selfcare",
     siteinfo: "site",
   };
 
@@ -310,6 +311,26 @@
     return html;
   }
 
+  function selfcareUrl() {
+    if (site.selfcare_url === undefined || site.selfcare_url === null) {
+      return "/dashboard/sslogin.php";
+    }
+    return String(site.selfcare_url).trim();
+  }
+
+  function renderSelfcare() {
+    const url = selfcareUrl();
+    if (!url) {
+      return `<table>
+        <thead><tr><th colspan="2">SELFCARE</th></tr></thead>
+        <tbody>
+          <tr><td class="empty-note">Selfcare is not available on this master.</td></tr>
+        </tbody>
+      </table>`;
+    }
+    return `<iframe class="selfcare-frame" src="${esc(url)}" title="SELFCARE"></iframe>`;
+  }
+
   function renderSite(data) {
     const lines = [
       "This is a private website.",
@@ -412,6 +433,10 @@
   }
 
   async function refresh() {
+    if (page === "selfcare") {
+      paint(renderSelfcare());
+      return;
+    }
     const endpoint = PAGES[page] || "status";
     const gen = ++fetchGen;
     try {
@@ -444,6 +469,7 @@
     interacting = false;
     pendingHtml = null;
     lastApplied = "";
+    main.classList.toggle("selfcare-open", next === "selfcare" && !!selfcareUrl());
     setNav();
     refresh();
     const hash = "#" + next;

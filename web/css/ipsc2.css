@@ -292,6 +292,19 @@ tbody tr:nth-child(even) {
   color: #444;
 }
 
+#mainpage.selfcare-open {
+  overflow: hidden;
+  padding: 0;
+}
+
+.selfcare-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
 @media (max-width: 52em) {
   html,
   body {
@@ -409,6 +422,14 @@ tbody tr:nth-child(even) {
     min-height: 12em;
     overflow-x: hidden;
     overflow-y: auto;
+  }
+
+  #mainpage.selfcare-open {
+    min-height: 70vh;
+  }
+
+  .selfcare-frame {
+    min-height: 70vh;
   }
 
   #footer {
