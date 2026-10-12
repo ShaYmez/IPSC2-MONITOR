@@ -4,7 +4,9 @@ Legacy IPSC2-style dashboard for a HBlink / RYSEN / System X master.
 
 Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
 
-It copies the live IPSC2 Style (STATUS, MONITOR, MATRIX, REMAP, BRIDGE, DONGLE, SERVICE, SITE-INFO) in a modern static frontend, and reads the same TCP report socket that HBMonitor / RYSEN-MONITOR uses (`:4321`).
+It copies the live IPSC2 Style (STATUS, MONITOR, MATRIX, REMAP, BRIDGE, APP, SERVICE, SELFCARE, SITE-INFO) in a modern static frontend, and reads the same TCP report socket that HBMonitor / RYSEN-MONITOR uses (`:4321`).
+
+![SystemX-UK STATUS](assets/systemx-uk-status.png)
 
 ## Run
 
