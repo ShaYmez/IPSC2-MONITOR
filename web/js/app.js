@@ -313,9 +313,27 @@
 
   function selfcareUrl() {
     if (site.selfcare_url === undefined || site.selfcare_url === null) {
-      return "/dashboard/sslogin.php";
+      return withSelfcareLightMode("/dashboard/sslogin.php");
     }
-    return String(site.selfcare_url).trim();
+    return withSelfcareLightMode(String(site.selfcare_url).trim());
+  }
+
+  function withSelfcareLightMode(url) {
+    if (!url) {
+      return "";
+    }
+    try {
+      const resolved = new URL(url, window.location.href);
+      if (!resolved.searchParams.has("mode")) {
+        resolved.searchParams.set("mode", "light");
+      }
+      if (resolved.origin === window.location.origin) {
+        return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+      }
+      return resolved.toString();
+    } catch (err) {
+      return url.indexOf("?") >= 0 ? `${url}&mode=light` : `${url}?mode=light`;
+    }
   }
 
   function renderSelfcare() {
