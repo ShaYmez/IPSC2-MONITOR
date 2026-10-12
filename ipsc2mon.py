@@ -77,7 +77,10 @@ RYSEN_VERSION = ""
 CONFIG_RX = ""
 CONNECTED = False
 STARTED = time()
+LAST_RX = 0.0
+REPORT_STALE_SECS = 180
 SITE = {}
+REPORT_FACTORY = None
 ALIASES = {"peer": {}, "sub": {}, "tg": {}}
 
 
@@ -1042,8 +1045,14 @@ def record_lastheard(parts):
     })
 
 
+def note_report_rx():
+    global LAST_RX
+    LAST_RX = time()
+
+
 def process_message(raw):
     global CONFIG, BRIDGES, RYSEN_VERSION, CONFIG_RX, CONNECTED
+    note_report_rx()
     text = raw.decode("utf-8", "ignore")
     opcode = text[:1]
     if opcode == OPCODE["SERVER_INFO_SND"]:
@@ -1369,14 +1378,27 @@ class ApiRoot(Resource):
 
 
 class Report(NetstringReceiver):
+    def connectionMade(self):
+        self.factory.client = self
+        note_report_rx()
+
     def stringReceived(self, data):
         try:
             process_message(data)
         except Exception:
             logger.exception("process_message failed")
 
+    def connectionLost(self, reason):
+        if getattr(self.factory, "client", None) is self:
+            self.factory.client = None
+        return NetstringReceiver.connectionLost(self, reason)
+
 
 class ReportFactory(ReconnectingClientFactory):
+    def __init__(self):
+        super().__init__()
+        self.client = None
+
     def startedConnecting(self, connector):
         logger.info("Connecting to RYSEN report %s", connector.getDestination())
 
@@ -1385,19 +1407,14 @@ class ReportFactory(ReconnectingClientFactory):
         CONNECTED = True
         self.resetDelay()
         logger.info("Connected to RYSEN report %s", addr)
-        return Report()
+        protocol = Report()
+        protocol.factory = self
+        return protocol
 
     def clientConnectionLost(self, connector, reason):
         global CONNECTED
         CONNECTED = False
-        CTABLE["MASTERS"].clear()
-        CTABLE["PEERS"].clear()
-        CTABLE["OPENBRIDGES"].clear()
-        ACTIVE.clear()
-        HANG.clear()
-        ENDED_SID.clear()
-        ENDED_KEY.clear()
-        DYNAMIC.clear()
+        self.client = None
         logger.info("Lost RYSEN report: %s", reason)
         ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
 
@@ -1406,6 +1423,22 @@ class ReportFactory(ReconnectingClientFactory):
         CONNECTED = False
         logger.info("RYSEN report failed: %s", reason)
         ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+
+
+def watch_report_socket():
+    if REPORT_FACTORY is None or not LAST_RX:
+        return
+    silent = time() - LAST_RX
+    if silent < REPORT_STALE_SECS:
+        return
+    client = getattr(REPORT_FACTORY, "client", None)
+    if client is None or client.transport is None:
+        return
+    logger.warning(
+        "RYSEN report silent for %.0fs, reconnecting",
+        silent,
+    )
+    client.transport.loseConnection()
 
 
 def main(argv=None):
@@ -1428,9 +1461,12 @@ def main(argv=None):
     root.putChild(b"api", ApiRoot())
     site = Site(root)
     reactor.listenTCP(cfg["web_port"], site, interface=cfg["web_host"])
-    reactor.connectTCP(cfg["rysen_host"], cfg["rysen_port"], ReportFactory())
+    global REPORT_FACTORY
+    REPORT_FACTORY = ReportFactory()
+    reactor.connectTCP(cfg["rysen_host"], cfg["rysen_port"], REPORT_FACTORY)
     task.LoopingCall(clean_timeouts).start(30, now=False)
     task.LoopingCall(prune_activity).start(1, now=False)
+    task.LoopingCall(watch_report_socket).start(30, now=False)
     logger.info(
         "IPSC2-MONITOR serving http://%s:%s  (RYSEN %s:%s)",
         cfg["web_host"], cfg["web_port"], cfg["rysen_host"], cfg["rysen_port"],
