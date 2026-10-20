@@ -82,6 +82,8 @@ REPORT_STALE_SECS = 180
 SITE = {}
 REPORT_FACTORY = None
 ALIASES = {"peer": {}, "sub": {}, "tg": {}}
+ALIAS_STAMPS = {}
+ALIAS_MIN_BYTES = 32
 
 
 def int_id(value):
@@ -272,13 +274,85 @@ def alias_tg(tgid):
     return ""
 
 
-def load_alias_files(cfg):
-    base = Path(cfg["files_path"])
+def _alias_base():
+    base = Path(SITE.get("files_path") or "./data")
     if not base.is_absolute():
         base = HERE / base
-    _load_json_aliases(base / cfg["peer_file"], "peer")
-    _load_json_aliases(base / cfg["tg_file"], "tg")
-    _load_subscriber_file(_subscriber_path(base, cfg["sub_file"]))
+    return base
+
+
+def _alias_paths():
+    base = _alias_base()
+    return {
+        "peer": base / (SITE.get("peer_file") or "peer_ids.json"),
+        "tg": base / (SITE.get("tg_file") or "talkgroup_ids.json"),
+        "sub": _subscriber_path(base, SITE.get("sub_file") or "user.csv"),
+    }
+
+
+def _path_stamp(path):
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def load_alias_files(cfg):
+    reload_alias_files(force=True)
+
+
+def reload_alias_files(force=False):
+    if not SITE:
+        return
+    paths = _alias_paths()
+    changed = False
+    for kind, path in paths.items():
+        stamp = _path_stamp(path)
+        if stamp is None or stamp[1] < ALIAS_MIN_BYTES:
+            continue
+        if force or ALIAS_STAMPS.get(kind) != stamp:
+            if _apply_alias_file(kind, path):
+                ALIAS_STAMPS[kind] = stamp
+                changed = True
+    if changed:
+        _refresh_call_fields()
+
+
+def _apply_alias_file(kind, path):
+    dest = {}
+    if kind == "sub":
+        count = _load_subscriber_file(path, dest)
+        label = "subscriber"
+    else:
+        count = _load_json_aliases(path, dest)
+        label = kind
+    if count:
+        ALIASES[kind] = dest
+        logger.info("Loaded %s %s aliases from %s", count, label, path.name)
+        return True
+    logger.info(
+        "Keeping %s %s aliases; %s is empty or not ready",
+        len(ALIASES[kind]),
+        label,
+        path.name,
+    )
+    return False
+
+
+def _refresh_call_fields():
+    for rec in LASTHEARD:
+        rec["call"] = alias_call(rec.get("id"), "sub")
+        rec["alias"] = alias_name(rec.get("id"), "sub")
+    for item in list(ACTIVE.values()) + list(HANG.values()):
+        item["call"] = alias_call(item.get("radio_id"), "sub")
+        item["name"] = alias_tg(item.get("tg"))
+    for _, peer in iter_peers():
+        for ts in (1, 2):
+            slot = peer.get(ts) or {}
+            src = slot.get("SRC")
+            if src:
+                slot["CALL"] = alias_call(src, "sub")
 
 
 def _subscriber_path(base, configured):
@@ -309,24 +383,24 @@ def _records_from_json(path):
     return []
 
 
-def _load_json_aliases(path, kind):
+def _load_json_aliases(path, dest):
     if not path.is_file():
-        return
+        return 0
     for rec in _records_from_json(path):
         try:
             rid = int(rec.get("id") or rec.get("ID"))
         except (TypeError, ValueError, AttributeError):
             continue
         if not isinstance(rec, dict):
-            ALIASES[kind][rid] = {"CALLSIGN": str(rec)}
+            dest[rid] = {"CALLSIGN": str(rec)}
             continue
-        ALIASES[kind][rid] = {
+        dest[rid] = {
             "CALLSIGN": rec.get("callsign") or rec.get("call_sign") or rec.get("CALLSIGN") or "",
             "NAME": rec.get("name") or rec.get("fname") or rec.get("NAME") or "",
             "CITY": rec.get("city") or "",
             "STATE": rec.get("state") or "",
         }
-    logger.info("Loaded %s %s aliases from %s", len(ALIASES[kind]), kind, path.name)
+    return len(dest)
 
 
 def _subscriber_call(rec):
@@ -342,9 +416,9 @@ def _subscriber_call(rec):
     )
 
 
-def _load_subscriber_file(path):
+def _load_subscriber_file(path, dest):
     if not path or not path.is_file():
-        return
+        return 0
     if path.suffix.lower() == ".json":
         for rec in _records_from_json(path):
             try:
@@ -353,9 +427,8 @@ def _load_subscriber_file(path):
                 continue
             call = _subscriber_call(rec)
             if rid > 0 and call:
-                ALIASES["sub"][rid] = call
-        logger.info("Loaded %s subscriber aliases from %s", len(ALIASES["sub"]), path.name)
-        return
+                dest[rid] = call
+        return len(dest)
     try:
         with path.open("r", encoding="utf-8", errors="replace") as handle:
             reader = csv.DictReader(handle)
@@ -366,10 +439,11 @@ def _load_subscriber_file(path):
                     continue
                 call = _subscriber_call(rec)
                 if rid > 0 and call:
-                    ALIASES["sub"][rid] = call
-        logger.info("Loaded %s subscriber aliases from %s", len(ALIASES["sub"]), path.name)
+                    dest[rid] = call
+        return len(dest)
     except Exception as exc:
         logger.info("Subscriber file %s skipped: %s", path, exc)
+        return 0
 
 
 def format_freq(value):
@@ -1467,6 +1541,7 @@ def main(argv=None):
     task.LoopingCall(clean_timeouts).start(30, now=False)
     task.LoopingCall(prune_activity).start(1, now=False)
     task.LoopingCall(watch_report_socket).start(30, now=False)
+    task.LoopingCall(reload_alias_files).start(60, now=False)
     logger.info(
         "IPSC2-MONITOR serving http://%s:%s  (RYSEN %s:%s)",
         cfg["web_host"], cfg["web_port"], cfg["rysen_host"], cfg["rysen_port"],
