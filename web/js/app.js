@@ -177,11 +177,14 @@
           <th class="tableft">RSSI</th><th class="tableft">FLOOR</th>
         </tr>`;
     (data.rows || []).forEach((row) => {
-      html += `<tr>
+      const kind = row.kind || "group";
+      const rowClass = kind === "data" ? " class=\"lh-data\"" : kind === "unit" ? " class=\"lh-unit\"" : "";
+      const tgClass = kind === "data" ? " class=\"lh-data\"" : kind === "unit" ? " class=\"lh-unit-tg\"" : "";
+      html += `<tr${rowClass}>
         <td>${esc(row.nr)}</td><td>${esc(row.hw)}</td><td>${esc(row.time)}</td>
         <td>${esc(row.sec)}</td><td>${esc(row.rptr)}</td><td>${esc(row.rptr_call)}</td>
         <td>${esc(row.id)}</td><td>${esc(row.call)}</td><td>${esc(row.alias)}</td>
-        <td>${esc(row.ts)}</td><td>${esc(row.tg)}</td><td>${esc(row.ber)}</td>
+        <td>${esc(row.ts)}</td><td${tgClass}>${esc(row.tg)}</td><td>${esc(row.ber)}</td>
         <td>${esc(row.rssi)}</td><td>${esc(row.floor)}</td>
       </tr>`;
     });

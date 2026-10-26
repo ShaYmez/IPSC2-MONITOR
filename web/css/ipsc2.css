@@ -275,6 +275,15 @@ tbody tr:nth-child(even) {
   padding: 0.05em 0.35em;
 }
 
+.lh-data,
+.lh-data td {
+  color: #3cb371;
+}
+
+.lh-unit-tg {
+  font-weight: 700;
+}
+
 .site-copy td {
   white-space: normal;
   padding: 0.35em 0.6em;

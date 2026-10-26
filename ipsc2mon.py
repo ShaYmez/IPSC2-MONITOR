@@ -53,6 +53,19 @@ OPCODE = {
     "SERVER_INFO_SND": "\x08",
 }
 
+UNIT_DATA_LASTHEARD_TYPES = frozenset(("UNIT DATA HEADER", "UNIT CSBK"))
+BRIDGE_DATA_SILENT_TYPES = frozenset((
+    "UNIT DATA",
+    "UNIT VCSBK 1/2 DATA BLOCK",
+    "UNIT VCSBK 3/4 DATA BLOCK",
+    "DATA HEADER",
+    "OTHER DATA",
+    "VCSBK 1/2 DATA BLOCK",
+    "VCSBK 3/4 DATA BLOCK",
+))
+UNIT_SMS_RECENT = {}
+UNIT_SMS_DEDUPE_SECS = 30
+
 ROUTING_MASTER_MODES = ("MASTER", "IPSC", "HYTERA")
 HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / "web"
@@ -343,10 +356,19 @@ def _apply_alias_file(kind, path):
 def _refresh_call_fields():
     for rec in LASTHEARD:
         rec["call"] = alias_call(rec.get("id"), "sub")
-        rec["alias"] = alias_name(rec.get("id"), "sub")
+        if rec.get("kind") in ("unit", "data") and rec.get("dest"):
+            rec["dest_call"] = alias_call(rec.get("dest"), "sub")
+            rec["alias"] = alias_name(rec.get("dest"), "sub") or rec["dest_call"]
+            if rec.get("kind") == "unit":
+                rec["tg"] = f"PC {rec['dest_call']}"
+        else:
+            rec["alias"] = alias_name(rec.get("id"), "sub")
     for item in list(ACTIVE.values()) + list(HANG.values()):
         item["call"] = alias_call(item.get("radio_id"), "sub")
-        item["name"] = alias_tg(item.get("tg"))
+        if item.get("kind") == "unit":
+            item["dest_call"] = alias_call(item.get("dest"), "sub")
+        else:
+            item["name"] = alias_tg(item.get("tg"))
     for _, peer in iter_peers():
         for ts in (1, 2):
             slot = peer.get(ts) or {}
@@ -519,6 +541,8 @@ def empty_slot():
         "RSSI": "",
         "TIMEOUT": 0,
         "TYPE": "",
+        "UNIT_FROM": "",
+        "UNIT_TO": "",
     }
 
 
@@ -758,14 +782,16 @@ def is_source_peer(peer, source):
 
 def slot_state(slot):
     trx = (slot or {}).get("TRX") or ""
-    if trx in ("RX", "UNIT_TX"):
+    if trx in ("RX", "UNIT_RX"):
         return "rx"
-    if trx in ("TX", "UNIT_RX"):
+    if trx in ("TX", "UNIT_TX"):
         return "tx"
     return ""
 
 
 def ipsc2_call_info(item):
+    if item.get("kind") == "unit":
+        return ipsc2_unit_info(item)
     tg = str(item.get("tg") or "")
     name = item.get("name") or ""
     radio_id = item.get("radio_id") or ""
@@ -775,6 +801,16 @@ def ipsc2_call_info(item):
     else:
         headline = f"{tg} ({radio_id})"
     return f"{headline}\n{call}"
+
+
+def ipsc2_unit_info(item):
+    caller = item.get("call") or str(item.get("radio_id") or "")
+    callee = item.get("dest_call") or str(item.get("dest") or "")
+    dest_id = item.get("dest") or ""
+    src_id = item.get("radio_id") or ""
+    if item.get("role") == "to":
+        return f"PC {caller} ({src_id})\n{callee}"
+    return f"PC {callee} ({dest_id})\n{caller}"
 
 
 def prune_hang():
@@ -816,8 +852,24 @@ def _slot_from_activity(peer, ts, items, hang):
     for item in items:
         if item.get("ts") != ts:
             continue
-        tg = str(item.get("tg") or "")
         is_source = is_source_peer(peer, item.get("peer"))
+        if item.get("kind") == "unit":
+            if not is_source:
+                continue
+            origin = item.get("role") != "to"
+            if hang:
+                state = "tx-hang" if origin else "rx-hang"
+            else:
+                state = "tx" if origin else "rx"
+            return {
+                "state": state,
+                "info": ipsc2_unit_info(item),
+                "cq": "",
+                "tg": "",
+                "show_tg": "",
+                "kind": "unit",
+            }
+        tg = str(item.get("tg") or "")
         if not peer_holds_tg(peer, tg, ts) and not is_source:
             continue
         if hang:
@@ -903,6 +955,8 @@ def peer_holds_tg(peer, tg, ts):
 
 
 def activity_is_local(item):
+    if item.get("kind") == "unit":
+        return bool(find_peer(item.get("peer")))
     tg = item.get("tg")
     ts = item.get("ts")
     for _, peer in iter_peers():
@@ -917,8 +971,30 @@ def _activity_from_slot(peer, ts):
     slot = peer.get(ts) or {}
     if not slot.get("TS") or not slot.get("TRX"):
         return None
+    if slot.get("TYPE") == "UNIT VOICE":
+        origin = slot.get("TRX") == "UNIT_TX"
+        item = {
+            "kind": "unit",
+            "role": "origin" if origin else "to",
+            "call": slot.get("UNIT_FROM") or slot.get("CALL") or "",
+            "radio_id": _unit_from_id(slot),
+            "dest": _unit_to_id(slot),
+            "dest_call": slot.get("UNIT_TO") or "",
+        }
+        if " (" in item["call"]:
+            item["call"] = item["call"].split(" (", 1)[0]
+        if " (" in item["dest_call"]:
+            item["dest_call"] = item["dest_call"].split(" (", 1)[0]
+        return {
+            "state": "tx" if origin else "rx",
+            "info": ipsc2_unit_info(item),
+            "cq": "",
+            "tg": "",
+            "show_tg": "",
+            "kind": "unit",
+        }
     tg = str(slot.get("TG") or slot.get("DEST") or "")
-    is_rx = slot.get("TRX") in ("RX", "UNIT_TX")
+    is_rx = slot.get("TRX") == "RX"
     item = {
         "tg": tg,
         "name": alias_tg(tg) if tg else "",
@@ -932,6 +1008,29 @@ def _activity_from_slot(peer, ts):
         "tg": tg,
         "show_tg": tg if is_rx and tg else "",
     }
+
+
+def _unit_from_id(slot):
+    text = str(slot.get("UNIT_FROM") or "")
+    if "(" in text and text.endswith(")"):
+        try:
+            return int(text[text.rfind("(") + 1:-1])
+        except ValueError:
+            pass
+    return slot.get("SRC") or ""
+
+
+def _unit_to_id(slot):
+    dest = slot.get("DEST")
+    if isinstance(dest, int):
+        return dest
+    text = str(slot.get("UNIT_TO") or "")
+    if "(" in text and text.endswith(")"):
+        try:
+            return int(text[text.rfind("(") + 1:-1])
+        except ValueError:
+            pass
+    return dest or ""
 
 
 def slot_activity(peer, ts):
@@ -949,8 +1048,169 @@ def slot_activity(peer, ts):
     return {"state": "", "info": "", "cq": "", "tg": "", "show_tg": ""}
 
 
+def _unit_leg(action):
+    if action in ("START", "END", "RSSI"):
+        return "ORIGIN", action
+    if action.startswith("TO "):
+        return "TO", action[3:]
+    if action.startswith("VIA "):
+        return "VIA", action[4:]
+    return None, None
+
+
+def _lookup_peer(system, peer_id):
+    master = CTABLE["MASTERS"].get(system)
+    if master:
+        peer = master["PEERS"].get(peer_id)
+        if peer:
+            return peer
+        for item in master["PEERS"].values():
+            if is_source_peer(item, peer_id):
+                return item
+    client = CTABLE["PEERS"].get(system)
+    if client and is_source_peer(client, peer_id):
+        return client
+    return find_peer(peer_id)
+
+
+def _set_unit_slot(slot, role, stream_id, source_sub, destination, timeout):
+    caller = alias_call(source_sub, "sub")
+    callee = alias_call(destination, "sub")
+    origin = role == "ORIGIN"
+    actor_id = source_sub if origin else destination
+    actor_call = caller if origin else callee
+    other_id = destination if origin else source_sub
+    other_call = callee if origin else caller
+    slot.update({
+        "TIMEOUT": timeout,
+        "TS": True,
+        "TYPE": "UNIT VOICE",
+        "CALL": actor_call,
+        "SRC": actor_id,
+        "DEST": destination if origin else source_sub,
+        "TG": f"PC {other_call}",
+        "TRX": "UNIT_TX" if origin else "UNIT_RX",
+        "SID": stream_id,
+        "RSSI": "",
+        "UNIT_FROM": f"{caller} ({source_sub})",
+        "UNIT_TO": f"{callee} ({destination})",
+    })
+
+
+def _unit_activity_item(role, source_peer, source_sub, destination, time_slot, stream_id, timeout):
+    return {
+        "kind": "unit",
+        "role": "origin" if role == "ORIGIN" else "to",
+        "tg": "",
+        "ts": time_slot,
+        "call": alias_call(source_sub, "sub"),
+        "radio_id": source_sub,
+        "dest": destination,
+        "dest_call": alias_call(destination, "sub"),
+        "peer": source_peer,
+        "name": "",
+        "sid": stream_id,
+        "seen": timeout,
+    }
+
+
+def _remember_unit_activity(role, source_peer, source_sub, destination, time_slot, stream_id, timeout):
+    if role == "VIA":
+        return
+    key = f"unit:{stream_id}:{role}:{source_peer}:{time_slot}"
+    HANG.pop(key, None)
+    ACTIVE[key] = _unit_activity_item(
+        role, source_peer, source_sub, destination, time_slot, stream_id, timeout)
+
+
+def _end_unit_activity(stream_id, role, source_peer, time_slot, timeout):
+    prefix = f"unit:{stream_id}:{role}:"
+    ended = None
+    key = None
+    for item_key, item in list(ACTIVE.items()):
+        if not str(item_key).startswith(prefix):
+            continue
+        if source_peer and not is_source_peer({"ID": item.get("peer"), "RADIO_ID": item.get("peer")}, source_peer):
+            if str(item.get("peer")) != str(source_peer):
+                continue
+        ended = ACTIVE.pop(item_key)
+        key = item_key
+        break
+    if ended is None:
+        for item_key, item in list(ACTIVE.items()):
+            if item.get("kind") == "unit" and str(item.get("sid") or "") == str(stream_id):
+                if role and item.get("role") != ("origin" if role == "ORIGIN" else "to"):
+                    continue
+                ended = ACTIVE.pop(item_key)
+                key = item_key
+                break
+    if ended:
+        ended["until"] = timeout + HANG_SECS
+        HANG[key] = ended
+
+
+def _slot_is_stream(slot, stream_id):
+    return str(slot.get("SID") or "") == str(stream_id)
+
+
+def unit_rts_update(parts):
+    if len(parts) < 9:
+        return
+    action = parts[1]
+    trx = parts[2]
+    system = parts[3]
+    stream_id = str(parts[4])
+    try:
+        source_peer = int(parts[5])
+        source_sub = int(parts[6])
+        time_slot = int(parts[7])
+        destination = int(parts[8])
+    except (TypeError, ValueError):
+        return
+    if time_slot not in (1, 2):
+        return
+    leg, phase = _unit_leg(action)
+    if phase not in ("START", "END", "RSSI"):
+        return
+    timeout = time()
+
+    if leg in ("ORIGIN", "TO"):
+        peer = _lookup_peer(system, source_peer)
+        if peer and time_slot in peer:
+            slot = peer[time_slot]
+            if phase == "START":
+                _set_unit_slot(slot, leg, stream_id, source_sub, destination, timeout)
+                _remember_unit_activity(
+                    leg, peer.get("ID") or source_peer, source_sub,
+                    destination, time_slot, stream_id, timeout)
+            elif phase == "RSSI" and _slot_is_stream(slot, stream_id):
+                slot["RSSI"] = _event_rssi(parts)
+            elif phase == "END" and (not slot.get("SID") or _slot_is_stream(slot, stream_id)):
+                peer[time_slot] = empty_slot()
+                _end_unit_activity(stream_id, leg, source_peer, time_slot, timeout)
+
+    if leg == "VIA" and system in CTABLE["OPENBRIDGES"]:
+        streams = CTABLE["OPENBRIDGES"][system]["STREAMS"]
+        if phase == "START":
+            streams[stream_id] = {
+                "TRX": trx,
+                "TYPE": "UNIT VOICE",
+                "ROLE": "OUT" if trx == "TX" else "IN",
+                "CALL": alias_call(source_sub, "sub"),
+                "SOURCE_ID": source_sub,
+                "DEST": alias_call(destination, "sub"),
+                "DEST_ID": destination,
+                "TIMEOUT": timeout,
+            }
+        elif phase == "END":
+            streams.pop(stream_id, None)
+
+
 def rts_update(parts):
     if len(parts) < 9:
+        return
+    if parts[0] == "UNIT VOICE":
+        unit_rts_update(parts)
         return
     call_type = parts[0]
     action = parts[1]
@@ -984,6 +1244,8 @@ def rts_update(parts):
                     "TRX": crx,
                     "SID": stream_id,
                     "RSSI": _event_rssi(parts) if crx == "RX" else slot.get("RSSI", ""),
+                    "UNIT_FROM": "",
+                    "UNIT_TO": "",
                 })
             elif action == "RSSI" and str(slot.get("SID") or "") == stream_id:
                 slot["RSSI"] = _event_rssi(parts)
@@ -1035,6 +1297,7 @@ def rts_update(parts):
                         break
             HANG.pop(key, None)
             ACTIVE[key] = {
+                "kind": "group",
                 "tg": destination,
                 "ts": time_slot,
                 "call": call,
@@ -1050,7 +1313,7 @@ def rts_update(parts):
         ended = ACTIVE.pop(key, None)
         if not ended:
             for item_key, item in list(ACTIVE.items()):
-                if str(item.get("sid") or "") == stream_id:
+                if str(item.get("sid") or "") == stream_id and item.get("kind") != "unit":
                     ended = ACTIVE.pop(item_key)
                     key = item_key
                     break
@@ -1071,6 +1334,35 @@ def _event_rssi(parts):
     if value < 200:
         return f"-{value} dBm"
     return ""
+
+
+def _heard_floor(stream_id):
+    try:
+        return f"{int(stream_id):08X}"
+    except (TypeError, ValueError):
+        return str(stream_id)
+
+
+def _append_lastheard(peer, source_peer, source_sub, time_slot, stream_id, **extra):
+    floor = extra.pop("floor", None) or _heard_floor(stream_id)
+    if any(rec.get("floor") == floor and rec.get("kind") == extra.get("kind", "group")
+           for rec in LASTHEARD):
+        return
+    LASTHEARD.appendleft({
+        "hw": hw_label(peer) if peer else "",
+        "time": now_stamp(),
+        "sec": extra.pop("sec", ""),
+        "rptr": str(source_peer),
+        "rptr_call": rptr_role(peer) if peer else "",
+        "id": source_sub,
+        "call": alias_call(source_sub, "sub"),
+        "alias": extra.pop("alias", alias_name(source_sub, "sub")),
+        "ts": time_slot,
+        "ber": "0.0",
+        "rssi": "",
+        "floor": floor,
+        **extra,
+    })
 
 
 def record_lastheard(parts):
@@ -1094,29 +1386,69 @@ def record_lastheard(parts):
         return
     if classify_peer(peer.get("ID"), peer) not in ("repeater", "hotspot"):
         return
-    hw = hw_label(peer)
-    role = rptr_role(peer)
-    try:
-        floor = f"{int(stream_id):08X}"
-    except (TypeError, ValueError):
-        floor = str(stream_id)
-    if any(rec.get("floor") == floor for rec in LASTHEARD):
+    if parts[0] == "UNIT VOICE":
+        dest_call = alias_call(destination, "sub")
+        _append_lastheard(
+            peer, source_peer, source_sub, time_slot, stream_id,
+            kind="unit",
+            sec=f"{duration:.1f}",
+            tg=f"PC {dest_call}",
+            dest=destination,
+            dest_call=dest_call,
+            alias=alias_name(destination, "sub") or dest_call,
+        )
         return
-    LASTHEARD.appendleft({
-        "hw": hw,
-        "time": now_stamp(),
-        "sec": f"{duration:.1f}",
-        "rptr": str(source_peer),
-        "rptr_call": role,
-        "id": source_sub,
-        "call": alias_call(source_sub, "sub"),
-        "alias": alias_name(source_sub, "sub"),
-        "ts": time_slot,
-        "tg": destination,
-        "ber": "0.0",
-        "rssi": "",
-        "floor": floor,
-    })
+    _append_lastheard(
+        peer, source_peer, source_sub, time_slot, stream_id,
+        kind="group",
+        sec=f"{duration:.1f}",
+        tg=destination,
+    )
+
+
+def bridge_data_telemetry(parts):
+    return len(parts) > 8 and parts[1] == "DATA" and parts[2] in ("RX", "TX")
+
+
+def record_unit_data_lastheard(parts):
+    if parts[0] not in UNIT_DATA_LASTHEARD_TYPES:
+        return
+    if not bridge_data_telemetry(parts) or parts[2] == "TX":
+        return
+    if parts[3] in CTABLE["OPENBRIDGES"]:
+        return
+    stream = str(parts[4])
+    now = time()
+    last = UNIT_SMS_RECENT.get(stream)
+    if last is not None and now - last < UNIT_SMS_DEDUPE_SECS:
+        return
+    UNIT_SMS_RECENT[stream] = now
+    if len(UNIT_SMS_RECENT) > 500:
+        cutoff = now - 60
+        for key, stamp in list(UNIT_SMS_RECENT.items()):
+            if stamp < cutoff:
+                UNIT_SMS_RECENT.pop(key, None)
+    try:
+        source_peer = int(parts[5])
+        source_sub = int(parts[6])
+        time_slot = int(parts[7])
+        destination = int(parts[8])
+    except (TypeError, ValueError):
+        return
+    peer = find_peer(source_peer)
+    if peer and classify_peer(peer.get("ID"), peer) not in ("repeater", "hotspot"):
+        return
+    dest_call = alias_call(destination, "sub")
+    _append_lastheard(
+        peer, source_peer, source_sub, time_slot, stream,
+        kind="data",
+        sec="",
+        tg="DATA",
+        dest=destination,
+        dest_call=dest_call,
+        alias=alias_name(destination, "sub") or dest_call,
+        floor=f"data:{stream}",
+    )
 
 
 def note_report_rx():
@@ -1151,8 +1483,10 @@ def process_message(raw):
         parts = text[1:].split(",")
         if parts and parts[0] in ("GROUP VOICE", "UNIT VOICE"):
             rts_update(parts)
-        if parts and parts[0] == "GROUP VOICE" and len(parts) > 9:
+        if parts and parts[0] in ("GROUP VOICE", "UNIT VOICE") and len(parts) > 9:
             record_lastheard(parts)
+        elif parts and parts[0] in UNIT_DATA_LASTHEARD_TYPES:
+            record_unit_data_lastheard(parts)
     elif opcode == OPCODE["LINK_EVENT"]:
         logger.debug("LINK_EVENT %s", text[1:])
 
@@ -1195,6 +1529,8 @@ def status_payload():
     registered = []
     seen = set()
     for item in ACTIVE.values():
+        if item.get("kind") == "unit":
+            continue
         if not activity_is_local(item):
             continue
         key = (item["tg"], item["ts"])
@@ -1237,7 +1573,10 @@ def status_payload():
     return {
         "stamp": now_stamp(),
         "version": RYSEN_VERSION or "System X",
-        "ww_cq": sorted({str(item["tg"]) for item in ACTIVE.values()}),
+        "ww_cq": sorted({
+            str(item["tg"]) for item in ACTIVE.values()
+            if item.get("kind") != "unit" and item.get("tg")
+        }),
         "registered": registered,
         "links": links,
     }
