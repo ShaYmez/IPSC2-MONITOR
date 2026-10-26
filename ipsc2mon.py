@@ -1060,17 +1060,15 @@ def _unit_leg(action):
 
 def _lookup_peer(system, peer_id):
     master = CTABLE["MASTERS"].get(system)
-    if master:
-        peer = master["PEERS"].get(peer_id)
-        if peer:
-            return peer
-        for item in master["PEERS"].values():
-            if is_source_peer(item, peer_id):
-                return item
-    client = CTABLE["PEERS"].get(system)
-    if client and is_source_peer(client, peer_id):
-        return client
-    return find_peer(peer_id)
+    if not master:
+        return None
+    peer = master["PEERS"].get(peer_id)
+    if peer:
+        return peer
+    for item in master["PEERS"].values():
+        if is_source_peer(item, peer_id):
+            return item
+    return None
 
 
 def _set_unit_slot(slot, role, stream_id, source_sub, destination, timeout):
@@ -1150,7 +1148,25 @@ def _end_unit_activity(stream_id, role, source_peer, time_slot, timeout):
 
 
 def _slot_is_stream(slot, stream_id):
-    return str(slot.get("SID") or "") == str(stream_id)
+    current = str(slot.get("SID") or "")
+    return current == "" or current == str(stream_id)
+
+
+def _apply_unit_phase(peer, time_slot, leg, phase, stream_id, source_sub,
+                      destination, timeout, parts, source_peer):
+    if not peer or time_slot not in peer:
+        return
+    slot = peer[time_slot]
+    if phase == "START":
+        _set_unit_slot(slot, leg, stream_id, source_sub, destination, timeout)
+        _remember_unit_activity(
+            leg, peer.get("ID") or peer.get("RADIO_ID") or source_peer, source_sub,
+            destination, time_slot, stream_id, timeout)
+    elif phase == "RSSI" and _slot_is_stream(slot, stream_id):
+        slot["RSSI"] = _event_rssi(parts)
+    elif phase == "END" and _slot_is_stream(slot, stream_id):
+        peer[time_slot] = empty_slot()
+        _end_unit_activity(stream_id, leg, source_peer, time_slot, timeout)
 
 
 def unit_rts_update(parts):
@@ -1175,19 +1191,14 @@ def unit_rts_update(parts):
     timeout = time()
 
     if leg in ("ORIGIN", "TO"):
-        peer = _lookup_peer(system, source_peer)
-        if peer and time_slot in peer:
-            slot = peer[time_slot]
-            if phase == "START":
-                _set_unit_slot(slot, leg, stream_id, source_sub, destination, timeout)
-                _remember_unit_activity(
-                    leg, peer.get("ID") or source_peer, source_sub,
-                    destination, time_slot, stream_id, timeout)
-            elif phase == "RSSI" and _slot_is_stream(slot, stream_id):
-                slot["RSSI"] = _event_rssi(parts)
-            elif phase == "END" and (not slot.get("SID") or _slot_is_stream(slot, stream_id)):
-                peer[time_slot] = empty_slot()
-                _end_unit_activity(stream_id, leg, source_peer, time_slot, timeout)
+        if system in CTABLE["MASTERS"]:
+            _apply_unit_phase(
+                _lookup_peer(system, source_peer), time_slot, leg, phase,
+                stream_id, source_sub, destination, timeout, parts, source_peer)
+        if system in CTABLE["PEERS"]:
+            _apply_unit_phase(
+                CTABLE["PEERS"][system], time_slot, leg, phase,
+                stream_id, source_sub, destination, timeout, parts, source_peer)
 
     if leg == "VIA" and system in CTABLE["OPENBRIDGES"]:
         streams = CTABLE["OPENBRIDGES"][system]["STREAMS"]
@@ -1387,6 +1398,8 @@ def record_lastheard(parts):
     if classify_peer(peer.get("ID"), peer) not in ("repeater", "hotspot"):
         return
     if parts[0] == "UNIT VOICE":
+        if int(duration) <= 2:
+            return
         dest_call = alias_call(destination, "sub")
         _append_lastheard(
             peer, source_peer, source_sub, time_slot, stream_id,

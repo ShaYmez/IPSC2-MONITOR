@@ -20,13 +20,14 @@ def _peer(peer_id, radio_id=None):
     }
 
 
-def _event(kind, action, system, peer, slot="1", trx="RX", stream="900", dest="2345875"):
+def _event(kind, action, system, peer, slot="1", trx="RX", stream="900",
+           dest="2345875", duration="4.20"):
     parts = [
         kind, action, trx, system, stream,
         str(peer), "2348831", slot, dest,
     ]
     if action in ("END", "TO END") or kind == "GROUP VOICE":
-        parts.append("4.20")
+        parts.append(duration)
     return parts
 
 
@@ -87,6 +88,38 @@ class TestUnitAndData(unittest.TestCase):
         self.assertEqual(row["tg"], "PC G0DEST")
         self.assertEqual(row["call"], "M0CALL")
         self.assertEqual(row["dest_call"], "G0DEST")
+
+    def test_lastheard_unit_skips_sub_two_second_blips(self):
+        mon.record_lastheard(
+            _event("UNIT VOICE", "END", "MASTER-A", 111, duration="1.50"))
+        self.assertEqual(len(mon.LASTHEARD), 0)
+
+    def test_unit_event_does_not_paint_a_peer_on_another_master(self):
+        mon.rts_update(_event("UNIT VOICE", "START", "MASTER-A", 222))
+        self.assertFalse(mon.CTABLE["MASTERS"]["MASTER-A"]["PEERS"][111][1]["TS"])
+        self.assertFalse(mon.CTABLE["MASTERS"]["MASTER-B"]["PEERS"][222][1]["TS"])
+
+    def test_peer_mode_client_paints_its_own_slot(self):
+        mon.CTABLE["PEERS"]["PEER-XLX"] = {
+            "MODE": "XLXPEER",
+            "RADIO_ID": 234999,
+            "CALLSIGN": "XLX999",
+            1: mon.empty_slot(),
+            2: mon.empty_slot(),
+        }
+        mon.rts_update(_event("UNIT VOICE", "START", "PEER-XLX", 234999))
+        slot = mon.CTABLE["PEERS"]["PEER-XLX"][1]
+        self.assertEqual(slot["TRX"], "UNIT_TX")
+        self.assertEqual(slot["CALL"], "M0CALL")
+        self.assertEqual(slot["TG"], "PC G0DEST")
+
+    def test_late_delivery_end_does_not_clear_new_stream(self):
+        mon.rts_update(_event("UNIT VOICE", "TO START", "MASTER-B", 222, stream="old"))
+        mon.rts_update(_event("UNIT VOICE", "TO START", "MASTER-B", 222, stream="new"))
+        mon.rts_update(_event("UNIT VOICE", "TO END", "MASTER-B", 222, stream="old"))
+        slot = mon.CTABLE["MASTERS"]["MASTER-B"]["PEERS"][222][1]
+        self.assertTrue(slot["TS"])
+        self.assertEqual(slot["SID"], "new")
 
     def test_lastheard_sms_is_data_and_deduped(self):
         sms = [
