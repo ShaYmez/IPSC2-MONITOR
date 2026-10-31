@@ -239,6 +239,77 @@ def pick_ua_timer(extra):
     return UA_TIMER_DEFAULT
 
 
+def sticky_flag_from_options(options_value):
+    """True/False if STICKY= is present and valid, else None."""
+    if not options_value:
+        return None
+    text = field_str(options_value)
+    for part in text.split(";"):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        if key.strip().upper() != "STICKY":
+            continue
+        low = value.strip().lower()
+        if low in ("1", "true", "yes"):
+            return True
+        if low in ("0", "false", "no"):
+            return False
+        return None
+    return None
+
+
+def peer_sticky_enabled(syscfg, peer_conf=None, ts1_static=None, ts2_static=None):
+    """Same rule as RYSEN: statics disable sticky; peer STICKY overrides system."""
+    if ts1_static or ts2_static:
+        return False
+    flag = sticky_flag_from_options((peer_conf or {}).get("OPTIONS"))
+    if flag is not None:
+        return flag
+    if peer_conf is not None and "STICKY" in peer_conf:
+        return bool(peer_conf["STICKY"])
+    return bool((syscfg or {}).get("STICKY_TG", False))
+
+
+def peer_ua_map(peer_conf):
+    """Per-slot UA from CONFIG_SND, or None when this master does not publish it."""
+    if not peer_conf or "UA" not in peer_conf:
+        return None
+    ua = peer_conf.get("UA")
+    if not isinstance(ua, dict):
+        return {}
+    out = {}
+    for key, row in ua.items():
+        try:
+            slot = int(key)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(row, dict):
+            continue
+        tgid = row.get("TGID")
+        if tgid in (None, "", 0):
+            continue
+        try:
+            out[slot] = {"TGID": int(tgid), "EXPIRES": row.get("EXPIRES")}
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def lookup_peer_conf(syscfg, peer_id):
+    peers = (syscfg or {}).get("PEERS") or {}
+    if peer_id in peers:
+        return peers[peer_id]
+    try:
+        raw = bytes_4(int_id(peer_id))
+        if raw in peers:
+            return peers[raw]
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return {}
+
+
 def peer_own_options(syscfg, peer_id):
     if peer_id is not None:
         peer = (syscfg.get("PEERS") or {}).get(peer_id) or {}
@@ -700,6 +771,12 @@ def _apply_options(config):
             peer["UA_TIMER"] = pick_ua_timer(extra)
             if ts1 or ts2:
                 peer["CONFIG"] = "OPTIONS"
+            peer_conf = lookup_peer_conf(syscfg, peer_id)
+            ts1_static = ts1 if options else (peer.get("TS1_STATIC") or [])
+            ts2_static = ts2 if options else (peer.get("TS2_STATIC") or [])
+            peer["STICKY"] = peer_sticky_enabled(
+                syscfg, peer_conf, ts1_static, ts2_static)
+            sync_dynamic_from_ua(peer, peer_ua_map(peer_conf))
 
 
 def clean_timeouts():
@@ -907,6 +984,29 @@ def dynamic_key(peer, ts):
     return (str(peer.get("ID") or peer.get("RADIO_ID") or ""), int(ts))
 
 
+def sync_dynamic_from_ua(peer, ua_map):
+    """CONFIG_SND UA is authoritative when the master publishes it."""
+    if ua_map is None:
+        return
+    sticky = bool(peer.get("STICKY"))
+    for ts in (1, 2):
+        key = dynamic_key(peer, ts)
+        row = ua_map.get(ts)
+        if not row:
+            DYNAMIC.pop(key, None)
+            continue
+        tg = str(row.get("TGID") or "").strip()
+        static = [str(item) for item in (peer.get(f"TS{ts}_STATIC") or [])]
+        if not tg or tg in DIAL_SERVICE or tg in static:
+            DYNAMIC.pop(key, None)
+            continue
+        expires = row.get("EXPIRES")
+        DYNAMIC[key] = {
+            "tg": tg,
+            "until": None if sticky or expires is None else float(expires),
+        }
+
+
 def remember_dynamic(peer, ts, tgid):
     tg = str(tgid or "").strip()
     key = dynamic_key(peer, ts)
@@ -915,9 +1015,10 @@ def remember_dynamic(peer, ts, tgid):
         DYNAMIC.pop(key, None)
         return
     minutes = peer_ua_timer(peer)
+    sticky = bool(peer.get("STICKY"))
     DYNAMIC[key] = {
         "tg": tg,
-        "until": None if minutes == 0 else time() + minutes * 60,
+        "until": None if sticky or minutes == 0 else time() + minutes * 60,
     }
 
 
