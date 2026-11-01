@@ -1609,7 +1609,15 @@ def peer_radio_id(peer):
     return str(peer.get("RADIO_ID") or peer.get("ID") or "")
 
 
+def is_daprs_peer(peer):
+    call = str(peer.get("CALLSIGN") or "").upper()
+    compact = "".join(ch for ch in call if ch.isalnum())
+    return "D-APRS" in call or compact == "DAPRS"
+
+
 def peer_list_rank(peer):
+    if is_daprs_peer(peer):
+        return 3
     kind = classify_peer(peer.get("ID"), peer)
     if kind in ("bridge", "service"):
         return 2

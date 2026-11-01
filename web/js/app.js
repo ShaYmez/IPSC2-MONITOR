@@ -7,7 +7,9 @@
   const titleEl = document.getElementById("site-title");
   const footerEl = document.getElementById("footer-line");
   const themeBtn = document.getElementById("theme-toggle");
+  const modeBtn = document.getElementById("mode-toggle");
   const navLinks = Array.from(document.querySelectorAll("#map a[data-page]"));
+  const MODE_KEY = "ipsc2-dash-mode";
 
   const PAGES = {
     status: "status",
@@ -55,6 +57,22 @@
     document.documentElement.setAttribute("data-theme", next);
     themeBtn.textContent = next.toUpperCase();
     localStorage.setItem("ipsc2-dash-theme", next);
+  }
+
+  function browserMode() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+
+  function applyMode(mode, persist) {
+    const next = mode === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-mode", next);
+    modeBtn.setAttribute("aria-label", next === "dark" ? "Dark mode" : "Light mode");
+    modeBtn.title = next === "dark" ? "Dark mode" : "Light mode";
+    if (persist) {
+      localStorage.setItem(MODE_KEY, next);
+    }
   }
 
   function setNav() {
@@ -518,12 +536,32 @@
     applyTheme(current === "uk" ? "de" : "uk");
   });
 
+  modeBtn.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-mode");
+    applyMode(current === "dark" ? "light" : "dark", true);
+  });
+
+  if (window.matchMedia) {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      if (!localStorage.getItem(MODE_KEY)) {
+        applyMode(browserMode(), false);
+      }
+    };
+    if (media.addEventListener) {
+      media.addEventListener("change", onChange);
+    } else if (media.addListener) {
+      media.addListener(onChange);
+    }
+  }
+
   ["touchstart", "touchmove", "pointerdown", "wheel"].forEach((type) => {
     document.addEventListener(type, markBusy, { passive: true });
   });
   document.addEventListener("scroll", markBusy, { passive: true, capture: true });
 
   applyTheme(localStorage.getItem("ipsc2-dash-theme") || "de");
+  applyMode(localStorage.getItem(MODE_KEY) || browserMode(), false);
   showPage(location.hash.replace("#", "") || "status");
   loadSite();
   setInterval(refresh, 1000);
