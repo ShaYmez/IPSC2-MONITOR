@@ -71,7 +71,11 @@
     modeBtn.setAttribute("aria-label", next === "dark" ? "Dark mode" : "Light mode");
     modeBtn.title = next === "dark" ? "Dark mode" : "Light mode";
     if (persist) {
-      localStorage.setItem(MODE_KEY, next);
+      sessionStorage.setItem(MODE_KEY, next);
+    }
+    if (page === "selfcare") {
+      lastApplied = "";
+      paint(renderSelfcare());
     }
   }
 
@@ -332,28 +336,31 @@
     return html;
   }
 
-  function selfcareUrl() {
-    if (site.selfcare_url === undefined || site.selfcare_url === null) {
-      return withSelfcareLightMode("/dashboard/sslogin.php");
-    }
-    return withSelfcareLightMode(String(site.selfcare_url).trim());
+  function currentMode() {
+    return document.documentElement.getAttribute("data-mode") === "dark" ? "dark" : "light";
   }
 
-  function withSelfcareLightMode(url) {
+  function selfcareUrl() {
+    if (site.selfcare_url === undefined || site.selfcare_url === null) {
+      return withSelfcareMode("/dashboard/sslogin.php");
+    }
+    return withSelfcareMode(String(site.selfcare_url).trim());
+  }
+
+  function withSelfcareMode(url) {
     if (!url) {
       return "";
     }
+    const mode = currentMode();
     try {
       const resolved = new URL(url, window.location.href);
-      if (!resolved.searchParams.has("mode")) {
-        resolved.searchParams.set("mode", "light");
-      }
+      resolved.searchParams.set("mode", mode);
       if (resolved.origin === window.location.origin) {
         return `${resolved.pathname}${resolved.search}${resolved.hash}`;
       }
       return resolved.toString();
     } catch (err) {
-      return url.indexOf("?") >= 0 ? `${url}&mode=light` : `${url}?mode=light`;
+      return url.indexOf("?") >= 0 ? `${url}&mode=${mode}` : `${url}?mode=${mode}`;
     }
   }
 
@@ -544,7 +551,7 @@
   if (window.matchMedia) {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
-      if (!localStorage.getItem(MODE_KEY)) {
+      if (!sessionStorage.getItem(MODE_KEY)) {
         applyMode(browserMode(), false);
       }
     };
@@ -561,7 +568,7 @@
   document.addEventListener("scroll", markBusy, { passive: true, capture: true });
 
   applyTheme(localStorage.getItem("ipsc2-dash-theme") || "de");
-  applyMode(localStorage.getItem(MODE_KEY) || browserMode(), false);
+  applyMode(sessionStorage.getItem(MODE_KEY) || browserMode(), false);
   showPage(location.hash.replace("#", "") || "status");
   loadSite();
   setInterval(refresh, 1000);

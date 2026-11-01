@@ -37,6 +37,11 @@ class TestPeerList(unittest.TestCase):
         self.assertTrue(mon.is_daprs_peer({"CALLSIGN": "D APRS"}))
         self.assertFalse(mon.is_daprs_peer({"CALLSIGN": "GB7APRS"}))
 
+    def test_index_cache_busts_css_and_js(self):
+        html = mon.versioned_index_html()
+        self.assertIn("css/ipsc2.css?v=", html)
+        self.assertIn("js/app.js?v=", html)
+
 
 if __name__ == "__main__":
     unittest.main()

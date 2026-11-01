@@ -10,7 +10,7 @@
   <title>System X Dashboard</title>
   <script>
     (function () {
-      var saved = localStorage.getItem("ipsc2-dash-mode");
+      var saved = sessionStorage.getItem("ipsc2-dash-mode");
       var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.setAttribute("data-mode", saved || (dark ? "dark" : "light"));
     }());

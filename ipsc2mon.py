@@ -1912,6 +1912,59 @@ class ApiRoot(Resource):
         return Resource.getChild(self, path, request)
 
 
+def asset_version():
+    stamps = []
+    for name in ("css/ipsc2.css", "js/app.js", "index.html"):
+        path = WEB_DIR / name
+        if path.is_file():
+            stamps.append(path.stat().st_mtime)
+    return str(int(max(stamps) if stamps else time()))
+
+
+def versioned_index_html():
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    ver = asset_version()
+    return (
+        html.replace('href="css/ipsc2.css"', f'href="css/ipsc2.css?v={ver}"')
+        .replace('src="js/app.js"', f'src="js/app.js?v={ver}"')
+    )
+
+
+class IndexPage(Resource):
+    isLeaf = True
+
+    def render_GET(self, request):
+        request.setHeader(b"content-type", b"text/html; charset=utf-8")
+        request.setHeader(b"cache-control", b"no-cache, must-revalidate")
+        return versioned_index_html().encode("utf-8")
+
+
+class WebRoot(File):
+    def getChild(self, path, request):
+        if path in (b"", b"index.html"):
+            return IndexPage()
+        child = File.getChild(self, path, request)
+        if isinstance(child, File):
+            child = NoCacheFile(child.path)
+        return child
+
+    def render_GET(self, request):
+        return IndexPage().render_GET(request)
+
+
+class NoCacheFile(File):
+    def getChild(self, path, request):
+        child = File.getChild(self, path, request)
+        if isinstance(child, File) and not isinstance(child, NoCacheFile):
+            return NoCacheFile(child.path)
+        return child
+
+    def render_GET(self, request):
+        if self.isfile():
+            request.setHeader(b"Cache-Control", b"no-cache, must-revalidate")
+        return File.render_GET(self, request)
+
+
 class Report(NetstringReceiver):
     def connectionMade(self):
         self.factory.client = self
@@ -1992,7 +2045,7 @@ def main(argv=None):
     )
     load_alias_files(cfg)
 
-    root = File(str(WEB_DIR))
+    root = WebRoot(str(WEB_DIR))
     root.putChild(b"api", ApiRoot())
     site = Site(root)
     reactor.listenTCP(cfg["web_port"], site, interface=cfg["web_host"])

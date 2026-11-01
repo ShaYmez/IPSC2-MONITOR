@@ -273,29 +273,33 @@ tbody tr:nth-child(even) {
 
 #theme-toggle,
 #mode-toggle {
+  box-sizing: border-box;
   margin-top: 0;
   border: 1px solid var(--toggle-border);
   background: var(--nav-hover);
   color: var(--nav-hover-fg);
-  padding: 0.2em 0.5em;
-  font: inherit;
-  cursor: pointer;
-}
-
-#mode-toggle {
+  width: 2.75em;
+  height: 2.2em;
+  min-width: 2.75em;
+  min-height: 2.2em;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.15em;
+  flex: 0 0 2.75em;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
 }
 
 #mode-toggle svg {
-  display: none;
-  width: 1em;
-  height: 1em;
+  width: 1.05em;
+  height: 1.05em;
+  flex: 0 0 1.05em;
 }
 
 #mode-toggle .mode-sun {
+  display: block;
   fill: currentColor;
   stroke: currentColor;
   stroke-width: 1.15;
@@ -303,11 +307,15 @@ tbody tr:nth-child(even) {
 }
 
 #mode-toggle .mode-moon {
+  display: none;
   fill: currentColor;
   stroke: none;
 }
 
-[data-mode="light"] #mode-toggle .mode-sun,
+[data-mode="dark"] #mode-toggle .mode-sun {
+  display: none;
+}
+
 [data-mode="dark"] #mode-toggle .mode-moon {
   display: block;
 }
@@ -382,7 +390,7 @@ tbody tr:nth-child(even) {
   width: 100%;
   height: 100%;
   border: 0;
-  background: #fff;
+  background: var(--page-bg);
 }
 
 @media (max-width: 52em) {
@@ -491,8 +499,11 @@ tbody tr:nth-child(even) {
 
   #theme-toggle,
   #mode-toggle {
+    width: 2.75em;
+    height: 2.2em;
+    min-width: 2.75em;
     min-height: 2.2em;
-    min-width: 3em;
+    flex-basis: 2.75em;
   }
 
   #mainpage {
