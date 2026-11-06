@@ -1806,7 +1806,7 @@ def bridge_payload():
 
 APP_MARKERS = (
     (("qsoone", "qso one"), "QSO One"),
-    (("voxdmr",), "VoxDMR"),
+    (("voxdmr", "vox dmr"), "VoxDMR"),
     (("z3dmr",), "Z3DMR"),
 )
 

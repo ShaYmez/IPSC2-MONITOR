@@ -70,6 +70,21 @@ class TestPeerList(unittest.TestCase):
         self.assertEqual(mon.hw_label(peer), "MMDVM")
         self.assertFalse(mon.is_app_peer(peer))
 
+    def test_voxdmr_from_firmware_and_static_tg(self):
+        peer = _peer("M0VUB", 234587565)
+        peer["PACKAGE_ID"] = "VoxDMR 0.16.1-dirty (android)"
+        peer["SOFTWARE_ID"] = "VoxDMR"
+        peer["LOCATION"] = "Internet"
+        peer["REFLECTOR"] = "4000"
+        peer["TS1_STATIC"] = []
+        peer["TS2_STATIC"] = ["235"]
+        peer[1] = mon.empty_slot()
+        peer[2] = mon.empty_slot()
+        self.assertEqual(mon.hw_label(peer), "VoxDMR")
+        self.assertEqual(mon.app_label(peer), "VoxDMR")
+        self.assertTrue(mon.is_app_peer(peer))
+        self.assertEqual(mon.app_tg_view(peer), ("235", ""))
+
     def test_qso_one_still_from_description(self):
         peer = _peer("M7OXP", 2357362)
         peer["DESCRIPTION"] = "qsoone android"
