@@ -69,6 +69,20 @@ UNIT_SMS_DEDUPE_SECS = 30
 ROUTING_MASTER_MODES = ("MASTER", "IPSC", "HYTERA")
 HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / "web"
+VERSION_FILE = HERE / "VERSION"
+
+
+def dash_version():
+    try:
+        text = VERSION_FILE.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, IndexError):
+        text = "0.01rc.1"
+    if not text:
+        text = "0.01rc.1"
+    if text.lower().startswith("v"):
+        return text
+    return f"v{text}"
+
 
 logger = logging.getLogger("ipsc2mon")
 
@@ -1929,6 +1943,8 @@ def site_payload():
         "selfcare_url": SITE.get("selfcare_url") or "",
         "peer_count": sum(len(m["PEERS"]) for m in CTABLE["MASTERS"].values()),
         "bridge_count": len(BRIDGES or {}),
+        "assets": asset_version(),
+        "dash_version": dash_version(),
     }
 
 
@@ -1972,7 +1988,18 @@ def asset_version():
         path = WEB_DIR / name
         if path.is_file():
             stamps.append(path.stat().st_mtime)
+    sidecar = Path(__file__).resolve()
+    if sidecar.is_file():
+        stamps.append(sidecar.stat().st_mtime)
+    if VERSION_FILE.is_file():
+        stamps.append(VERSION_FILE.stat().st_mtime)
     return str(int(max(stamps) if stamps else time()))
+
+
+def set_no_store(request):
+    request.setHeader(b"Cache-Control", b"no-store, no-cache, must-revalidate, max-age=0")
+    request.setHeader(b"Pragma", b"no-cache")
+    request.setHeader(b"Expires", b"0")
 
 
 def versioned_index_html():
@@ -1981,6 +2008,8 @@ def versioned_index_html():
     return (
         html.replace('href="css/ipsc2.css"', f'href="css/ipsc2.css?v={ver}"')
         .replace('src="js/app.js"', f'src="js/app.js?v={ver}"')
+        .replace('content="ASSETVER"', f'content="{ver}"')
+        .replace(">vDASHVER<", f">{dash_version()}<")
     )
 
 
@@ -1989,7 +2018,7 @@ class IndexPage(Resource):
 
     def render_GET(self, request):
         request.setHeader(b"content-type", b"text/html; charset=utf-8")
-        request.setHeader(b"cache-control", b"no-cache, must-revalidate")
+        set_no_store(request)
         return versioned_index_html().encode("utf-8")
 
 
@@ -2014,9 +2043,10 @@ class NoCacheFile(File):
         return child
 
     def render_GET(self, request):
-        if self.isfile():
-            request.setHeader(b"Cache-Control", b"no-cache, must-revalidate")
-        return File.render_GET(self, request)
+        set_no_store(request)
+        body = File.render_GET(self, request)
+        set_no_store(request)
+        return body
 
 
 class Report(NetstringReceiver):

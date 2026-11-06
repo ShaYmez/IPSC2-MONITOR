@@ -6,6 +6,7 @@
   const main = document.getElementById("mainpage");
   const titleEl = document.getElementById("site-title");
   const footerEl = document.getElementById("footer-line");
+  const dashVerEl = document.getElementById("dash-version");
   const themeBtn = document.getElementById("theme-toggle");
   const modeBtn = document.getElementById("mode-toggle");
   const navLinks = Array.from(document.querySelectorAll("#map a[data-page]"));
@@ -495,12 +496,31 @@
     }
   }
 
+  function builtAssets() {
+    const el = document.querySelector('meta[name="ipsc2-assets"]');
+    return el ? el.content : "";
+  }
+
   async function loadSite() {
     try {
       site = await fetchJson("api/site");
+      const built = builtAssets();
+      if (
+        site.assets
+        && built
+        && built !== "ASSETVER"
+        && site.assets !== built
+        && page !== "selfcare"
+      ) {
+        location.reload();
+        return;
+      }
       titleEl.textContent = site.title || "System X";
       document.title = (site.title || "System X") + " Dashboard";
       footerEl.textContent = (site.title || "System X") + (site.version ? "  " + site.version : "");
+      if (dashVerEl && site.dash_version) {
+        dashVerEl.textContent = site.dash_version;
+      }
       if (!localStorage.getItem("ipsc2-dash-theme") && site.theme) {
         applyTheme(site.theme);
       }

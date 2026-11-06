@@ -44,8 +44,17 @@ class TestPeerList(unittest.TestCase):
 
     def test_index_cache_busts_css_and_js(self):
         html = mon.versioned_index_html()
-        self.assertIn("css/ipsc2.css?v=", html)
-        self.assertIn("js/app.js?v=", html)
+        ver = mon.asset_version()
+        self.assertIn(f"css/ipsc2.css?v={ver}", html)
+        self.assertIn(f"js/app.js?v={ver}", html)
+        self.assertIn(f'name="ipsc2-assets" content="{ver}"', html)
+        self.assertEqual(mon.site_payload()["assets"], ver)
+
+    def test_dash_version_on_sidebar(self):
+        self.assertEqual(mon.dash_version(), "v0.01rc.1")
+        html = mon.versioned_index_html()
+        self.assertIn(">v0.01rc.1<", html)
+        self.assertEqual(mon.site_payload()["dash_version"], "v0.01rc.1")
 
     def test_z3dmr_hardware_is_tracked_on_app(self):
         peer = _peer("M0VUB", 234587550, protocol="HOMEBREW")

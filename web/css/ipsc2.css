@@ -107,6 +107,8 @@ body {
   width: 7em;
   top: 4em;
   bottom: 2em;
+  display: flex;
+  flex-direction: column;
   background-color: var(--nav-bg);
 }
 
@@ -247,6 +249,16 @@ tbody tr:nth-child(even) {
 
 .nav-calls {
   margin: 1.2em 0 0;
+}
+
+.nav-version {
+  margin: auto 0 0;
+  padding: 0.35em 0.5em 0.5em;
+  font-size: 0.62em;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  color: var(--note);
+  opacity: 0.75;
 }
 
 .table-scroll {
@@ -491,6 +503,14 @@ tbody tr:nth-child(even) {
 
   .nav-toggles {
     margin-top: 0;
+  }
+
+  .nav-version {
+    margin: 0;
+    padding: 0 0.7em 0.45em;
+    padding-left: max(0.7em, env(safe-area-inset-left));
+    text-align: right;
+    flex: 1 1 100%;
   }
 
   #theme-toggle,
