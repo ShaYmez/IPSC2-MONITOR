@@ -18,6 +18,11 @@ def _peer(call, radio_id, **extra):
 
 
 class TestPeerList(unittest.TestCase):
+    def setUp(self):
+        mon.ACTIVE.clear()
+        mon.HANG.clear()
+        mon.DYNAMIC.clear()
+
     def test_daprs_is_last(self):
         repeater = _peer("GB7HA", 234101)
         hotspot = _peer("M0HOT", 2341011)
@@ -41,6 +46,74 @@ class TestPeerList(unittest.TestCase):
         html = mon.versioned_index_html()
         self.assertIn("css/ipsc2.css?v=", html)
         self.assertIn("js/app.js?v=", html)
+
+    def test_z3dmr_hardware_is_tracked_on_app(self):
+        peer = _peer("M0VUB", 234587550, protocol="HOMEBREW")
+        peer["PACKAGE_ID"] = "Z3DMR"
+        peer["SOFTWARE_ID"] = "20261105"
+        self.assertEqual(mon.hw_label(peer), "Z3DMR")
+        self.assertEqual(mon.app_label(peer), "Z3DMR")
+        self.assertTrue(mon.is_app_peer(peer))
+
+    def test_mmdvm_hotspot_stays_off_app(self):
+        peer = _peer("M0HOT", 2341011)
+        peer["PACKAGE_ID"] = "MMDVM_HS_Hat"
+        self.assertEqual(mon.hw_label(peer), "MMDVM")
+        self.assertFalse(mon.is_app_peer(peer))
+
+    def test_qso_one_still_from_description(self):
+        peer = _peer("M7OXP", 2357362)
+        peer["DESCRIPTION"] = "qsoone android"
+        self.assertEqual(mon.app_label(peer), "QSO One")
+
+    def test_qso_one_from_firmware_and_dynamic_tg(self):
+        peer = _peer("M7OXP", 2357362)
+        peer["PACKAGE_ID"] = "20250101"
+        peer["SOFTWARE_ID"] = "QSOOne"
+        peer["LOCATION"] = "QSO One"
+        peer["REFLECTOR"] = "4000"
+        peer["TS1_STATIC"] = []
+        peer["TS2_STATIC"] = []
+        peer[1] = mon.empty_slot()
+        peer[2] = mon.empty_slot()
+        self.assertEqual(mon.hw_label(peer), "QSO One")
+        self.assertEqual(mon.app_label(peer), "QSO One")
+        self.assertEqual(mon.app_tg_view(peer), ("", ""))
+        mon.remember_dynamic(peer, 2, 23426)
+        self.assertEqual(mon.app_tg_view(peer), ("23426", ""))
+
+    def test_app_tg_uses_parked_static_not_dial(self):
+        peer = _peer("M0VUB", 234587550)
+        peer["PACKAGE_ID"] = "Z3DMR"
+        peer["REFLECTOR"] = "4000"
+        peer["TS2_STATIC"] = ["31320"]
+        peer[1] = mon.empty_slot()
+        peer[2] = mon.empty_slot()
+        self.assertEqual(mon.app_tg_view(peer), ("31320", ""))
+
+    def test_app_tg_lights_live_and_hang(self):
+        peer = _peer("M0VUB", 234587550)
+        peer["PACKAGE_ID"] = "Z3DMR"
+        peer["TS2_STATIC"] = ["31320"]
+        peer[1] = mon.empty_slot()
+        live = mon.empty_slot()
+        live["TS"] = True
+        live["TRX"] = "TX"
+        live["TG"] = "91"
+        live["DEST"] = "91"
+        peer[2] = live
+        self.assertEqual(mon.app_tg_view(peer), ("91", "tx"))
+        peer[2] = mon.empty_slot()
+        mon.HANG[("app", 2)] = {
+            "ts": 2,
+            "peer": 234587550,
+            "tg": "91",
+            "name": "",
+            "call": "M0VUB",
+            "radio_id": "234587550",
+            "until": mon.time() + 10,
+        }
+        self.assertEqual(mon.app_tg_view(peer), ("91", "rx-hang"))
 
 
 if __name__ == "__main__":

@@ -292,15 +292,15 @@
       <tbody>
         <tr>
           <th class="tableft">NR</th><th class="tableft">CALL</th>
-          <th class="tableft">APP</th><th class="tableft">DIAL</th>
+          <th class="tableft">APP</th><th class="tableft">TG</th>
           <th class="tableft">ID</th><th class="tableft">CONN</th>
         </tr>`;
     (data.rows || []).forEach((row, idx) => {
       html += `<tr>
         <td>${idx + 1}</td>
-        <td${cls(row.ts1_state || row.ts2_state)}>${esc(row.call)}</td>
+        <td>${esc(row.call)}</td>
         <td>${esc(row.app)}</td>
-        <td>${esc(row.dial)}</td>
+        <td${cls(row.tg_state)}>${esc(row.tg)}</td>
         <td>${esc(row.id)}</td>
         <td>${esc(row.conn)}</td>
       </tr>`;

@@ -798,6 +798,7 @@ def clean_timeouts():
 def hw_label(peer):
     proto = (peer.get("PROTOCOL") or "").upper()
     package = (peer.get("PACKAGE_ID") or "").upper()
+    software = (peer.get("SOFTWARE_ID") or "").upper()
     kind = classify_peer(peer.get("ID"), peer)
     if proto == "IPSC" or "IPSC" in package or "MOTOROLA" in package:
         return "IPSC"
@@ -807,6 +808,9 @@ def hw_label(peer):
         return "OBP"
     if kind == "service":
         return "SVC"
+    app = app_hw_from_ids(package, software)
+    if app:
+        return app
     if "MMDVM" in package or kind in ("hotspot", "repeater"):
         return "MMDVM"
     return "MMDVM"
@@ -1793,13 +1797,26 @@ APP_MARKERS = (
 )
 
 
+def app_hw_from_ids(package, software):
+    blob = f"{package or ''} {software or ''}".lower()
+    for marks, label in APP_MARKERS:
+        if any(mark in blob for mark in marks):
+            return label
+    return ""
+
+
 def _app_blob(peer):
     return " ".join(
-        str(peer.get(key) or "") for key in ("DESCRIPTION", "LOCATION")
+        str(peer.get(key) or "")
+        for key in ("DESCRIPTION", "LOCATION", "PACKAGE_ID", "SOFTWARE_ID")
     ).lower()
 
 
 def app_label(peer):
+    hw = hw_label(peer)
+    for _, label in APP_MARKERS:
+        if hw == label:
+            return label
     blob = _app_blob(peer)
     for marks, label in APP_MARKERS:
         if any(mark in blob for mark in marks):
@@ -1811,21 +1828,58 @@ def is_app_peer(peer):
     return bool(app_label(peer))
 
 
+def _parked_app_tg(peer):
+    for ts in (2, 1):
+        dyn = peer_dynamic_tg(peer, ts)
+        if dyn:
+            return dyn
+    for ts in (2, 1):
+        for tg in peer.get(f"TS{ts}_STATIC") or []:
+            text = str(tg)
+            if text and text not in DIAL_SERVICE:
+                return text
+    refl = str(peer.get("REFLECTOR") or "")
+    if refl and refl not in DIAL_SERVICE:
+        return refl
+    return ""
+
+
+def _app_activity_rank(act):
+    if (act or {}).get("kind") == "unit":
+        return 0
+    if not (act or {}).get("tg"):
+        return 0
+    state = act.get("state") or ""
+    if state in ("tx", "rx"):
+        return 2
+    if state in ("tx-hang", "rx-hang"):
+        return 1
+    return 0
+
+
+def app_tg_view(peer):
+    """TG the app is on, plus IPSC2 TX/RX/hang paint for that cell."""
+    act1 = slot_activity(peer, 1)
+    act2 = slot_activity(peer, 2)
+    live = act2 if _app_activity_rank(act2) >= _app_activity_rank(act1) else act1
+    if _app_activity_rank(live):
+        return str(live.get("tg") or ""), live.get("state") or ""
+    return _parked_app_tg(peer), ""
+
+
 def dongle_payload():
     rows = []
     for _, peer in sorted_peers():
         if not is_app_peer(peer):
             continue
-        s1, s2 = peer.get(1) or {}, peer.get(2) or {}
-        static = (peer.get("TS1_STATIC") or []) + (peer.get("TS2_STATIC") or [])
+        tg, tg_state = app_tg_view(peer)
         rows.append({
             "call": peer.get("CALLSIGN") or "",
             "app": app_label(peer),
-            "dial": (peer.get("REFLECTOR") or (static[0] if static else "")),
+            "tg": tg,
             "id": str(peer.get("RADIO_ID") or peer.get("ID") or ""),
             "conn": "YES" if peer.get("CONNECTION") == "YES" else "NO",
-            "ts1_state": slot_state(s1),
-            "ts2_state": slot_state(s2),
+            "tg_state": tg_state,
         })
     return {"stamp": now_stamp(), "rows": rows}
 
