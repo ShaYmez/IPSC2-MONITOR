@@ -76,9 +76,9 @@ def dash_version():
     try:
         text = VERSION_FILE.read_text(encoding="utf-8").splitlines()[0].strip()
     except (OSError, IndexError):
-        text = "0.01rc.1"
+        text = "0.1.2rc.1"
     if not text:
-        text = "0.01rc.1"
+        text = "0.1.2rc.1"
     if text.lower().startswith("v"):
         return text
     return f"v{text}"

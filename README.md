@@ -48,3 +48,5 @@ systemctl reload apache2
 Update later with `/opt/ipsc2-monitor/deploy/update.sh` (pull + restart). Site settings stay in `/etc/rysen/ipsc2mon.cfg` so a pull does not overwrite them.
 
 The UI is at `https://<master>/legacy/`. REPORT_CLIENTS on HBlink / RYSEN must allow the host (stock is `*`).
+
+See [CHANGELOG.md](CHANGELOG.md) for the lazy version notes (`VERSION` is what the side menu shows).

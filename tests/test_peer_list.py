@@ -51,10 +51,10 @@ class TestPeerList(unittest.TestCase):
         self.assertEqual(mon.site_payload()["assets"], ver)
 
     def test_dash_version_on_sidebar(self):
-        self.assertEqual(mon.dash_version(), "v0.01rc.1")
+        self.assertEqual(mon.dash_version(), "v0.1.2rc.1")
         html = mon.versioned_index_html()
-        self.assertIn(">v0.01rc.1<", html)
-        self.assertEqual(mon.site_payload()["dash_version"], "v0.01rc.1")
+        self.assertIn(">v0.1.2rc.1<", html)
+        self.assertEqual(mon.site_payload()["dash_version"], "v0.1.2rc.1")
 
     def test_z3dmr_hardware_is_tracked_on_app(self):
         peer = _peer("M0VUB", 234587550, protocol="HOMEBREW")
